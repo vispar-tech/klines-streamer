@@ -115,6 +115,7 @@ STREAMER_KLINE_INTERVALS=1m,5m,1h
 
 # Aggregator
 STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true
+STREAMER_AGGREGATOR_WAITER_LATENCY_MS=80
 
 # Logging
 STREAMER_LOG_LEVEL=INFO
@@ -178,8 +179,10 @@ Trades (check timestamps above) may arrive after a candle boundary and thus get 
 
 To help with delivery delays, set `STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true`:
 
--   **Enabled:** Aggregator waits up to 80ms after candle close if any trades arrived for that candle.
+-   **Enabled:** Aggregator waits up to the configured latency (default 80ms) after candle close if any trades arrived for that candle.
 -   **Disabled:** Candles close immediately; you may miss late trades.
+
+Configure the wait latency with `STREAMER_AGGREGATOR_WAITER_LATENCY_MS` (in milliseconds).
 
 **Recommended:** Enable waiter mode in production for data accuracy.
 

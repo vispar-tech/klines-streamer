@@ -39,6 +39,7 @@ class Settings(BaseSettings):
 
     # Aggregator configuration
     aggregator_waiter_mode_enabled: bool = True
+    aggregator_waiter_latency_ms: int = 80
 
     # Logging configuration
     log_level: str = "INFO"

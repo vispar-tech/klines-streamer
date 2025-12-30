@@ -29,6 +29,7 @@ class Aggregator:
         "_running",
         "_timer_task",
         "_timer_ticks_count",
+        "_waiter_latency_ms",
         "_waiter_mode_enabled",
     )
 
@@ -56,14 +57,17 @@ class Aggregator:
 
         # Configuration
         self._waiter_mode_enabled = settings.aggregator_waiter_mode_enabled
+        self._waiter_latency_ms = settings.aggregator_waiter_latency_ms
 
         self._timer_ticks_count = 0
 
         if logger.isEnabledFor(logging.INFO):
             logger.info(
-                "Aggregator initialized with intervals: %s, waiter_mode: %s",
+                "Aggregator initialized with intervals: %s, waiter_mode: %s, "
+                "waiter_latency: %sms",
                 ",".join(str(i) for i in sorted(intervals)),
                 self._waiter_mode_enabled,
+                self._waiter_latency_ms,
             )
 
     async def handle_trade(self, message: Dict[str, Any]) -> None:
@@ -154,7 +158,9 @@ class Aggregator:
                     await asyncio.sleep(sleep_s)
 
                 if self._waiter_mode_enabled:
-                    await asyncio.sleep(0.08)  # 80ms extra delay in waiter mode
+                    await asyncio.sleep(
+                        self._waiter_latency_ms / 1000
+                    )  # configurable extra delay in waiter mode
 
                 self._timer_ticks_count += 1
                 await self._close_candles(boundary)
