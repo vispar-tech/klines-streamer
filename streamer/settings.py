@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     wss_auth_user: str | None = None
 
     # Consumer configuration
-    enabled_consumers: List[str] = ["console"]
+    enabled_consumers: Annotated[List[str], NoDecode] = ["console"]
 
     # Aggregator configuration
     aggregator_waiter_mode_enabled: bool = True
@@ -44,6 +44,19 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     log_file: str = ""
+
+    @field_validator("bybit_symbols", mode="before")
+    @classmethod
+    def validate_bybit_symbols(cls, value: Any) -> list[str]:
+        """Parse string or list to list of symbols."""
+        items: list[str] = []
+        if isinstance(value, str):
+            items.extend([v.strip() for v in value.split(",") if v.strip()])
+        elif isinstance(value, list):
+            for v in value:
+                if isinstance(v, str):
+                    items.extend([s.strip() for s in v.split(",") if s.strip()])
+        return [x for x in items if x]
 
     @field_validator("kline_intervals", mode="before")
     @classmethod
@@ -58,10 +71,10 @@ class Settings(BaseSettings):
                     items.extend([s.strip() for s in v.split(",") if s.strip()])
         return {Interval(x) for x in items if x}
 
-    @field_validator("bybit_symbols", mode="before")
+    @field_validator("enabled_consumers", mode="before")
     @classmethod
-    def validate_bybit_symbols(cls, value: Any) -> list[str]:
-        """Parse string or list to list of symbols."""
+    def validate_enabled_consumers(cls, value: Any) -> list[str]:
+        """Parse string or list to a normalized list of enabled consumers."""
         items: list[str] = []
         if isinstance(value, str):
             items.extend([v.strip() for v in value.split(",") if v.strip()])

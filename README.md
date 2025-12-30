@@ -150,6 +150,7 @@ See the **Development** section below for Makefile commands.
 
 1. **Bybit Connection:** Connect to Bybit WebSocket API for trades
 2. **Kline Aggregation:** Bucket trades into candlesticks for all intervals
+    > **Note:** The first candle of each interval is always skipped to ensure data consistency and avoid incomplete candles at startup.
 3. **Consumer Dispatch:** Each enabled consumer receives finalized kline data
 4. **Lifecycle:** Consumers are set up, started, receive data, and stopped in a managed order
 5. **Any Combination:** Use any set of built-in or custom output consumers
