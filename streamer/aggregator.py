@@ -21,6 +21,7 @@ class Aggregator:
     __slots__ = (
         "_broadcaster",
         "_buckets",
+        "_first_candle_skipped",
         "_interval_ms_map",
         "_intervals_sorted",
         "_last_close",
@@ -49,6 +50,9 @@ class Aggregator:
 
         # symbol -> interval_ms -> last_close
         self._last_close: Dict[str, Dict[int, float]] = {}
+
+        # symbol -> interval_ms -> bool (first candle skipped)
+        self._first_candle_skipped: Dict[str, Dict[int, bool]] = {}
 
         # Configuration
         self._waiter_mode_enabled = settings.aggregator_waiter_mode_enabled
@@ -162,6 +166,7 @@ class Aggregator:
 
         for symbol, intervals in self._buckets.items():
             last_close = self._last_close.setdefault(symbol, {})
+            first_candle_skipped = self._first_candle_skipped.setdefault(symbol, {})
 
             for interval_ms in self._intervals_sorted:
                 if boundary_ms % interval_ms != 0:
@@ -169,6 +174,18 @@ class Aggregator:
 
                 start = boundary_ms - interval_ms
                 bucket = intervals.get(interval_ms)
+
+                # If this is the first candle for this symbol-interval,
+                # skip it and remember to skip only once
+                if not first_candle_skipped.get(interval_ms, False):
+                    # whether a bucket was formed or not, we skip first
+                    first_candle_skipped[interval_ms] = True
+                    # Still need to pop the interval and update last_close
+                    # if a bucket exists
+                    if bucket is not None:
+                        intervals.pop(interval_ms, None)
+                        last_close[interval_ms] = bucket["c"]
+                    continue
 
                 if bucket is None:
                     prev = last_close.get(interval_ms)
