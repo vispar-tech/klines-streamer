@@ -1,0 +1,28 @@
+repos:
+    - repo: local
+      hooks:
+          - id: ruff-format
+            name: Format with Ruff
+            entry: poetry run ruff format
+            language: system
+            types: [python]
+            pass_filenames: false
+            args: ["backend", "tests"]
+
+          - id: ruff-lint
+            name: Check with Ruff
+            entry: poetry run ruff check
+            language: system
+            types: [python]
+            pass_filenames: false
+            always_run: true
+            args: ["backend", "tests", "--fix"]
+
+          - id: mypy
+            name: Validate types with MyPy
+            entry: poetry run mypy
+            language: system
+            types: [python]
+            pass_filenames: false
+            args:
+                - "backend"
