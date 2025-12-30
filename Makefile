@@ -11,19 +11,19 @@ install: ## Install dependencies using poetry
 
 run: ## Run the Bybit klines streamer
 	@echo "🚀 Running Bybit klines streamer..."
-	@poetry run python -m bybit_klines_streamer
+	@poetry run python -m streamer
 
 lint: ## Lint the code with Ruff
 	@echo "🔍 Linting code..."
-	@poetry run ruff check bybit_klines_streamer
+	@poetry run ruff check streamer
 
 format: ## Format the code with Ruff
 	@echo "🖋️ Formatting code..."
-	@poetry run ruff format bybit_klines_streamer
+	@poetry run ruff format streamer
 
 mypy: ## Check types with MyPy
 	@echo "🔍 Checking types with MyPy..."
-	@poetry run mypy bybit_klines_streamer
+	@poetry run mypy streamer
 
 check-all: format lint mypy ## Run all linters
 

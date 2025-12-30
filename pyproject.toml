@@ -11,7 +11,9 @@ dependencies = [
     "tenacity (>=9.1.2,<10.0.0)",
     "orjson (>=3.11.5,<4.0.0)",
     "pydantic-settings (>=2.12.0,<3.0.0)",
-    "aiohttp (>=3.13.2,<4.0.0)"
+    "aiohttp (>=3.13.2,<4.0.0)",
+    "pydantic (>=2.12.5,<3.0.0)",
+    "redis (>=4.5.0,<6.0.0)"
 ]
 
 [tool.poetry]
@@ -71,6 +73,7 @@ select = [
     "ERA",
     "PLR",
     "RUF",
+    "TC"
 
 ]
 ignore = [
@@ -81,6 +84,12 @@ unfixable = []
 pydocstyle = { convention = "pep257", ignore-decorators = ["typing.overload"] }
 isort = { force-single-line = false, known-first-party = ["streamer"] }
 pylint = { allow-magic-value-types = ["int", "str", "float", "bytes"], max-args = 7 }
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*" = [
+    "T201",
+]
+
 
 [tool.ruff.format]
 quote-style = "double"
