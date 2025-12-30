@@ -5,29 +5,14 @@ import logging
 import sys
 from typing import List
 
+from streamer.aggregator import Aggregator
+from streamer.broadcaster import Broadcaster
 from streamer.consumers import BaseConsumer, ConsumerManager
-from streamer.logging import setup_logging
 from streamer.settings import settings
+from streamer.utils import setup_logging, validate_settings_symbols
+from streamer.websocket import WebSocketClient
 
 logger = logging.getLogger("streamer")
-
-
-async def run_streamer(consumers: List[BaseConsumer]) -> None:
-    """
-    Run the main streamer logic.
-
-    Args:
-        consumers: List of active consumer instances
-    """
-    logger.info("Streamer is running...")
-
-    # For now, just keep the consumers running
-    # In the future, this will contain the main streaming logic
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except asyncio.CancelledError:
-        logger.info("Streamer received shutdown signal")
 
 
 async def main_async() -> None:
@@ -40,7 +25,7 @@ async def main_async() -> None:
 
     try:
         # Process and validate symbols
-        await settings.process_symbols()
+        await validate_settings_symbols()
 
         # Validate configuration
         logger.info(f"Configured symbols: {settings.bybit_symbols}")
@@ -57,8 +42,21 @@ async def main_async() -> None:
             # Start consumers
             await ConsumerManager.start_consumers(consumers)
 
-            # Run main streamer loop
-            await run_streamer(consumers)
+            # Setup broadcaster
+            broadcaster = Broadcaster(consumers)
+
+            # Create aggregator that will send completed klines to broadcaster
+            aggregator = Aggregator(broadcaster)
+
+            # Create WebSocket client with pool support and connect to aggregator
+            websocket_client = WebSocketClient(
+                on_trade=aggregator.handle_trade,
+            )
+
+            # Run aggregator timer
+            await aggregator.start()
+
+            await websocket_client.start()
         else:
             logger.warning("No consumers to run, exiting...")
 
@@ -71,6 +69,7 @@ async def main_async() -> None:
         # Shutdown consumers
         if consumers:
             await ConsumerManager.shutdown_consumers(consumers)
+
         logger.info("Streamer shutdown complete")
 
 

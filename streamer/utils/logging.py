@@ -2,15 +2,14 @@
 
 import logging
 import sys
-from typing import Optional
 
 from streamer.settings import settings
 
 
 def setup_logging(
-    level: Optional[str] = None,
-    format_string: Optional[str] = None,
-    log_file: Optional[str] = None,
+    level: str | None = None,
+    format_string: str | None = None,
+    log_file: str | None = None,
 ) -> None:
     """
     Configure logging for the application.

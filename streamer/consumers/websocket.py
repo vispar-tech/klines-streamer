@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from typing import Any, Dict, Set
+from typing import Any, Dict, List, Set
 
 import orjson
 from websockets.asyncio.server import Server, ServerConnection, serve
@@ -232,7 +232,7 @@ class WebSocketConsumer(BaseConsumer):
             self.logger.error(f"Failed to start WebSocket server: {e}")
             raise
 
-    async def consume(self, data: Dict[str, Any]) -> None:
+    async def consume(self, data: List[Dict[str, Any]]) -> None:
         """
         Consume kline data and broadcast to WebSocket clients.
 

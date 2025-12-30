@@ -16,6 +16,7 @@ A Python service that **aggregates trades from Bybit’s WebSocket API into cand
 -   **Type-Safe Settings**: Pydantic-based configuration with environment variable support
 -   **Async Architecture**: Built with asyncio for high-performance concurrent operations
 -   **Comprehensive Logging**: Structured logging throughout the application lifecycle
+-   **Trade Latency Compensation**: Optional waiter mode to handle Bybit's trade delivery delays
 
 ---
 
@@ -65,9 +66,13 @@ A Python service that **aggregates trades from Bybit’s WebSocket API into cand
     BYBIT_LOAD_ALL_SYMBOLS=false
     BYBIT_SYMBOLS=BTCUSDT,ETHUSDT
     BYBIT_SYMBOLS_LIMIT=
+    BYBIT_SOCKET_POOL_SIZE=5
 
     # Kline intervals
     KLINE_INTERVALS=1m,5m,1h
+
+    # Aggregator settings
+    AGGREGATOR_WAITER_MODE_ENABLED=true
 
     # Logging
     LOG_LEVEL=INFO
@@ -107,6 +112,32 @@ The system aggregates Bybit trades into kline data and distributes through a con
 
 ---
 
+## Trade Latency Considerations
+
+Bybit WebSocket API has inherent trade delivery delays that can cause OHLC data discrepancies:
+
+```
+2025-12-30 19:03:05,000 - streamer.aggregator - DEBUG - Closing 1 candles at boundary 1767110585000
+2025-12-30 19:03:05,001 - streamer.consumers.console - INFO - [XRPUSDT] [1000ms] timestamp=1767110584000 (2025-12-30 19:03:04) open=1.8755 high=1.8755 low=1.8755 close=1.8755 volume=0.0 trade_count=0
+2025-12-30 19:03:05,865 - streamer.aggregator - DEBUG - Handle trade: {'topic': 'publicTrade.XRPUSDT', 'type': 'snapshot', 'ts': 1767110585795, 'data': [{'T': 1767110585794, 's': 'XRPUSDT', 'S': 'Buy', 'v': '363.1', 'p': '1.8755', 'L': 'ZeroMinusTick', 'i': '966f08b3-2f4a-56f1-af3e-5d60b701d12d', 'BT': False, 'RPI': False, 'seq': 225913470494}]}
+2025-12-30 19:03:06,001 - streamer.aggregator - DEBUG - Closing 1 candles at boundary 1767110586000
+2025-12-30 19:03:06,001 - streamer.consumers.console - INFO - [XRPUSDT] [1000ms] timestamp=1767110585000 (2025-12-30 19:03:05) open=1.8755 high=1.8755 low=1.8755 close=1.8755 volume=363.1 trade_count=1
+2025-12-30 19:03:06,060 - streamer.aggregator - DEBUG - Handle trade: {'topic': 'publicTrade.XRPUSDT', 'type': 'snapshot', 'ts': 1767110585992, 'data': [{'T': 1767110585990, 's': 'XRPUSDT', 'S': 'Sell', 'v': '5.4', 'p': '1.8754', 'L': 'MinusTick', 'i': '0a1446cf-05eb-5c2e-a6d5-65d538f4d4c0', 'BT': False, 'RPI': False, 'seq': 225913470987}, {'T': 1767110585990, 's': 'XRPUSDT', 'S': 'Sell', 'v': '5.6', 'p': '1.8754', 'L': 'ZeroMinusTick', 'i': 'cf9d7317-89b2-5db9-8d00-dea3e8c4a670', 'BT': False, 'RPI': False, 'seq': 225913470987}]}
+```
+
+As shown above, trades for the 6-second kline arrived at 19:03:06,060 after the candle boundary, causing the data to be included in the next candle instead of the correct one.
+
+### Aggregator Waiter Mode
+
+To mitigate this, enable **Aggregator Waiter Mode** with `AGGREGATOR_WAITER_MODE_ENABLED=true`:
+
+-   **With waiter mode enabled**: When closing a candle that contains trades, the aggregator waits up to 80ms for potentially delayed trades before finalizing the OHLC data
+-   **With waiter mode disabled**: Candles close immediately at interval boundaries, which is faster but may miss late-arriving trades
+
+**Recommendation**: Keep waiter mode enabled for production use to ensure data accuracy, despite the slight performance impact.
+
+---
+
 ## Extending
 
 ### Adding Custom Consumers
@@ -133,7 +164,7 @@ class MyCustomConsumer(BaseConsumer):
         # Start your consumer
         self._is_running = True
 
-    async def consume(self, data: Dict[str, Any]) -> None:
+    async def consume(self, data: List[Dict[str, Any]]) -> None:
         # Process the kline data
         if not self._is_running:
             return

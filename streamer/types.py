@@ -1,7 +1,7 @@
 """Type definitions and utilities for the streamer package."""
 
 import re
-from typing import ClassVar, Dict
+from typing import Any, ClassVar, Dict, Union
 
 
 class Interval:
@@ -16,6 +16,8 @@ class Interval:
     - h = hours
     - D = days
     - M = months (30 days)
+
+    Can also be constructed from integer milliseconds directly.
     """
 
     # Conversion factors to milliseconds
@@ -31,20 +33,31 @@ class Interval:
     _PATTERN = re.compile(r"^(\d+)(ms|[smhDM])$")
     _MIN_MILLISECONDS = 100
 
-    def __init__(self, interval_str: str) -> None:
+    def __init__(self, interval: Union[str, int]) -> None:
         """
-        Initialize interval from string format.
+        Initialize interval from string format or direct milliseconds.
 
         Args:
-            interval_str: Interval string (e.g., "1m", "5h", "1D", "500ms")
+            interval: Interval string (e.g., "1m", "5h", "1D", "500ms")
+                or integer milliseconds
 
         Raises:
             ValueError: If interval format is invalid or milliseconds < 100
         """
-        self.raw = interval_str
-        self._parse(interval_str)
+        if isinstance(interval, int):
+            if interval < self._MIN_MILLISECONDS:
+                raise ValueError(
+                    f"Millisecond intervals must be at least "
+                    f"{self._MIN_MILLISECONDS}ms, got: {interval}ms"
+                )
+            self.raw = f"{interval}ms"
+            self.value = interval
+            self.unit = "ms"
+        else:
+            self.raw = interval
+            self._parse_instance(interval)
 
-    def _parse(self, interval_str: str) -> None:
+    def _parse_instance(self, interval_str: str) -> None:
         """Parse interval string and extract value and unit."""
         match = self._PATTERN.match(interval_str)
         if not match:
@@ -66,6 +79,28 @@ class Interval:
                 f"Millisecond intervals must be at least {self._MIN_MILLISECONDS}ms, "
                 f"got: {self.value}ms"
             )
+
+    @classmethod
+    def from_ms(cls, ms: int) -> "Interval":
+        """Alternate explicit constructor for an Interval from milliseconds."""
+        return cls(ms)
+
+    @classmethod
+    def parse(cls, value: Any) -> "Interval":
+        """
+        Parse and return an Interval instance from string, int, or Interval itself.
+
+        Handles use in Pydantic and data validator contexts.
+        """
+        if isinstance(value, Interval):
+            return value
+        if isinstance(value, int):
+            return cls(value)
+        if isinstance(value, str):
+            return cls(value)
+        raise TypeError(
+            f"Cannot convert value of type {type(value).__name__} to Interval"
+        )
 
     def to_milliseconds(self) -> int:
         """Convert interval to milliseconds."""

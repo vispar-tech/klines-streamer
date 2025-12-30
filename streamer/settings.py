@@ -1,11 +1,10 @@
 """Application settings using Pydantic."""
 
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any, List, Set
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from streamer.symbols import load_all_symbols, validate_symbols
 from streamer.types import Interval
 
 
@@ -16,26 +15,30 @@ class Settings(BaseSettings):
     bybit_symbols: Annotated[List[str], NoDecode] = ["BTCUSDT", "ETHUSDT"]
     bybit_load_all_symbols: bool = False
     bybit_symbols_limit: int | None = None
-    kline_intervals: Annotated[List[Interval], NoDecode] = []
+    bybit_socket_pool_size: int = 5
+    kline_intervals: Annotated[Set[Interval], NoDecode] = set()
 
     # Redis configuration
     # (optional - only required when Redis consumer is enabled)
-    redis_url: Optional[str] = None
-    redis_channel: Optional[str] = None
+    redis_url: str | None = None
+    redis_channel: str | None = None
 
     # WebSocket server configuration
     # (optional - only required when WebSocket consumer is enabled)
-    websocket_host: Optional[str] = None
-    websocket_port: Optional[int] = None
-    websocket_url: Optional[str] = None
+    websocket_host: str | None = None
+    websocket_port: int | None = None
+    websocket_url: str | None = None
 
     # WebSocket authentication
     # (optional - only required when WebSocket consumer is enabled)
-    wss_auth_key: Optional[str] = None
-    wss_auth_user: Optional[str] = None
+    wss_auth_key: str | None = None
+    wss_auth_user: str | None = None
 
     # Consumer configuration
     enabled_consumers: List[str] = ["console"]
+
+    # Aggregator configuration
+    aggregator_waiter_mode_enabled: bool = True
 
     # Logging configuration
     log_level: str = "INFO"
@@ -44,7 +47,7 @@ class Settings(BaseSettings):
 
     @field_validator("kline_intervals", mode="before")
     @classmethod
-    def validate_kline_intervals(cls, value: Any) -> list[Interval]:
+    def validate_kline_intervals(cls, value: Any) -> set[Interval]:
         """Parse string or list to Interval instances with simple validation."""
         items: list[str] = []
         if isinstance(value, str):
@@ -53,7 +56,7 @@ class Settings(BaseSettings):
             for v in value:
                 if isinstance(v, str):
                     items.extend([s.strip() for s in v.split(",") if s.strip()])
-        return [Interval(x) for x in items if x]
+        return {Interval(x) for x in items if x}
 
     @field_validator("bybit_symbols", mode="before")
     @classmethod
@@ -67,21 +70,6 @@ class Settings(BaseSettings):
                 if isinstance(v, str):
                     items.extend([s.strip() for s in v.split(",") if s.strip()])
         return [x for x in items if x]
-
-    async def process_symbols(self) -> None:
-        """
-        Process and validate symbols based on configuration.
-
-        This should be called after settings initialization to handle async operations.
-        """
-        if self.bybit_load_all_symbols:
-            # Load all symbols from Bybit API
-            all_symbols = await load_all_symbols(self.bybit_symbols_limit)
-            self.bybit_symbols = list(all_symbols)
-        else:
-            # Validate provided symbols
-            validated_symbols = await validate_symbols(self.bybit_symbols)
-            self.bybit_symbols = validated_symbols
 
     model_config = SettingsConfigDict(
         env_file=".env",

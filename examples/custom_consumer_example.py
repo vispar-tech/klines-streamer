@@ -8,7 +8,7 @@ custom consumers for different output destinations.
 import asyncio
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 # Add parent path to sys.path for local development/example usage
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
@@ -51,7 +51,7 @@ class FileConsumer(BaseConsumer):
         self.logger.info("Starting file consumer")
         self._is_running = True
 
-    async def consume(self, data: Dict[str, Any]) -> None:
+    async def consume(self, data: List[Dict[str, Any]]) -> None:
         """
         Consume kline data and write to output path.
 
@@ -111,7 +111,7 @@ if __name__ == "__main__":
             "volume": 100.5,
         }
 
-        await consumer.consume(test_data)
+        await consumer.consume([test_data])
         await consumer.stop()
 
         print(f"Saved test kline data to: ./output/{output_path}")

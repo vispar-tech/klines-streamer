@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 
 class BaseConsumer(ABC):
@@ -42,7 +42,7 @@ class BaseConsumer(ABC):
         ...
 
     @abstractmethod
-    async def consume(self, data: Dict[str, Any]) -> None:
+    async def consume(self, data: List[Dict[str, Any]]) -> None:
         """
         Consume and process kline data.
 

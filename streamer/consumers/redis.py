@@ -1,6 +1,6 @@
 """Redis consumer for publishing kline data."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import orjson
 from redis.asyncio import Redis
@@ -51,7 +51,7 @@ class RedisConsumer(BaseConsumer):
         self.logger.info("Starting Redis consumer")
         self._is_running = True
 
-    async def consume(self, data: Dict[str, Any]) -> None:
+    async def consume(self, data: List[Dict[str, Any]]) -> None:
         """
         Consume kline data and publish to Redis.
 
