@@ -8,15 +8,15 @@ A Python service that **aggregates trades from Bybit’s WebSocket API into cand
 
 ## Features
 
--   **Kline Aggregation**: Converts raw trades into candlestick (kline) data with open/high/low/close/volume
--   **Multi-Interval Support**: Streams multiple candle/interval resolutions simultaneously
--   **Pluggable Consumer System**: Extensible output architecture with Redis, WebSocket, and console consumers
--   **Automatic Configuration Validation**: Consumer-specific settings validation with helpful error messages
--   **Dynamic Symbol Management**: Load Bybit symbols or use custom lists with validation
--   **Type-Safe Settings**: Pydantic-based configuration with environment variable support
--   **Async Architecture**: Built with asyncio for high-performance concurrent operations
--   **Comprehensive Logging**: Structured logging throughout the application lifecycle
--   **Trade Latency Compensation**: Optional waiter mode to handle Bybit's trade delivery delays
+-   **Kline Aggregation:** Converts raw trades from Bybit into candlestick (kline) data (OHLCV)
+-   **Multi-Interval Support:** Streams candles for multiple, configurable intervals
+-   **Pluggable Consumers:** Extensible architecture (Redis, WebSocket, console, or your own)
+-   **Config Validation:** Strict, consumer-specific settings validation
+-   **Dynamic Symbols:** Load (and validate) all symbols from Bybit or provide a custom list
+-   **Type Safety:** All config via Pydantic with env var support
+-   **Async Architecture:** Fully asyncio-based for concurrent high performance
+-   **Structured Logging:** Logs throughout app lifecycle
+-   **Trade Latency Compensation:** Waiter mode for delayed trades from Bybit
 
 ---
 
@@ -66,95 +66,99 @@ A Python service that **aggregates trades from Bybit’s WebSocket API into cand
     ```
 
 4. **Stop the service:**
-
     ```bash
     docker-compose down
     ```
 
-#### Production with Traefik
+### Docker Deployment with Traefik (Production)
 
-For production deployments with SSL termination using Traefik:
+1. **SSL via Traefik:**
 
-```bash
-docker-compose -f docker-compose.traefik.yaml up -d --build
+    ```bash
+    docker-compose -f docker-compose.traefik.yaml up -d --build
+    ```
+
+2. **Configure Traefik Environment:**
+
+    - Make sure `STREAMER_HOST` and `STREAMER_WEBSOCKET_PORT` are set for proper Traefik routing.
+    - _Traefik itself is not included; this assumes your own running Traefik and `traefiktointernet` network!_
+
+---
+
+### Configuration
+
+Configure consumers and other settings via `.env` file:
+
+```dotenv
+# Consumers (comma-separated)
+STREAMER_ENABLED_CONSUMERS=console,redis,websocket
+
+# Redis (if enabled)
+STREAMER_REDIS_URL=redis://localhost:6379/0
+STREAMER_REDIS_CHANNEL=klines
+
+# WebSocket (if enabled)
+STREAMER_WEBSOCKET_HOST=localhost
+STREAMER_WEBSOCKET_PORT=9500
+STREAMER_WEBSOCKET_URL=wss://localhost:9500
+STREAMER_WSS_AUTH_KEY=your_secret_key
+STREAMER_WSS_AUTH_USER=your_username
+
+# Symbol configuration
+STREAMER_BYBIT_LOAD_ALL_SYMBOLS=false
+STREAMER_BYBIT_SYMBOLS=BTCUSDT,ETHUSDT
+STREAMER_BYBIT_SYMBOLS_LIMIT=
+STREAMER_BYBIT_SOCKET_POOL_SIZE=5
+
+# Kline intervals
+STREAMER_KLINE_INTERVALS=1m,5m,1h
+
+# Aggregator
+STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true
+
+# Logging
+STREAMER_LOG_LEVEL=INFO
 ```
 
-Make sure to set `STREAMER_HOST` and `STREAMER_WEBSOCKET_PORT` environment variables for Traefik routing.
+> **If using WSS:**  
+> Set `STREAMER_WSS_AUTH_KEY` and `STREAMER_WSS_AUTH_USER` to protect your stream.
 
-> **Note:** This project does not include Traefik setup itself. We hope you already have your own Traefik instance running with the `traefiktointernet` network configured! 🏃‍♂️
+#### Example WSS Auth block:
 
-    Configure your consumer settings. The service supports multiple output destinations:
+```
+STREAMER_WSS_AUTH_KEY=your_secret_key
+STREAMER_WSS_AUTH_USER=your_username
+```
 
-    Example `.env`:
+The service checks these credentials for every incoming WSS connection.
 
-    ```bash
-    # Consumer selection (comma-separated list)
-    STREAMER_ENABLED_CONSUMERS=console,redis,websocket
+---
 
-    # Redis settings (required only if Redis consumer is enabled)
-    STREAMER_REDIS_URL=redis://localhost:6379/0
-    STREAMER_REDIS_CHANNEL=klines
+### Running
 
-    # WebSocket settings (required only if WebSocket consumer is enabled)
-    STREAMER_WEBSOCKET_HOST=localhost
-    STREAMER_WEBSOCKET_PORT=9500
-    STREAMER_WEBSOCKET_URL=wss://localhost:9500
-    STREAMER_WSS_AUTH_KEY=your_secret_key
-    STREAMER_WSS_AUTH_USER=your_username
+Start the app (after editing `.env`):
 
-    # Symbol configuration
-    STREAMER_BYBIT_LOAD_ALL_SYMBOLS=false
-    STREAMER_BYBIT_SYMBOLS=BTCUSDT,ETHUSDT
-    STREAMER_BYBIT_SYMBOLS_LIMIT=
-    STREAMER_BYBIT_SOCKET_POOL_SIZE=5
+```bash
+poetry run python -m streamer
+```
 
-    # Kline intervals
-    STREAMER_KLINE_INTERVALS=1m,5m,1h
-
-    # Aggregator settings
-    STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true
-
-    # Logging
-    STREAMER_LOG_LEVEL=INFO
-    ```
-
-    > **If using WSS (WebSocket) output:**
-    > Set environment variables for **WebSocket authorization and key** to protect your stream.
-    > Example:
-    >
-    > ```
-    > STREAMER_WSS_AUTH_KEY=your_secret_key
-    > STREAMER_WSS_AUTH_USER=your_username
-    > ```
-    >
-    > The service checks these credentials for incoming WSS connections.
-
-4. **Run the application:**
-
-    ```bash
-    # Run the application
-    poetry run python -m streamer
-    ```
-
-    See the **Development** section below for additional Makefile commands.
+See the **Development** section below for Makefile commands.
 
 ---
 
 ## How it Works
 
-The system aggregates Bybit trades into kline data and distributes through a consumer-based architecture:
-
-1. **Bybit Connection**: Connects to Bybit WebSocket API for real-time trade data
-2. **Kline Aggregation**: Buckets trades into candlesticks (open/high/low/close/volume) for configured intervals
-3. **Consumer Processing**: Selected consumers process and distribute kline data
-4. **Lifecycle Management**: Consumers go through setup → start → consume → stop phases
-5. **Extensible Outputs**: Multiple consumer types can be combined for different output destinations
+1. **Bybit Connection:** Connect to Bybit WebSocket API for trades
+2. **Kline Aggregation:** Bucket trades into candlesticks for all intervals
+3. **Consumer Dispatch:** Each enabled consumer receives finalized kline data
+4. **Lifecycle:** Consumers are set up, started, receive data, and stopped in a managed order
+5. **Any Combination:** Use any set of built-in or custom output consumers
 
 ---
 
 ## Trade Latency Considerations
 
-Bybit WebSocket API has inherent trade delivery delays that can cause OHLC data discrepancies:
+Bybit may deliver trades with a delay, resulting in candlestick mismatches:
 
 ```
 2025-12-30 19:03:05,000 - streamer.aggregator - DEBUG - Closing 1 candles at boundary 1767110585000
@@ -165,24 +169,26 @@ Bybit WebSocket API has inherent trade delivery delays that can cause OHLC data 
 2025-12-30 19:03:06,060 - streamer.aggregator - DEBUG - Handle trade: {'topic': 'publicTrade.XRPUSDT', 'type': 'snapshot', 'ts': 1767110585992, 'data': [{'T': 1767110585990, 's': 'XRPUSDT', 'S': 'Sell', 'v': '5.4', 'p': '1.8754', 'L': 'MinusTick', 'i': '0a1446cf-05eb-5c2e-a6d5-65d538f4d4c0', 'BT': False, 'RPI': False, 'seq': 225913470987}, {'T': 1767110585990, 's': 'XRPUSDT', 'S': 'Sell', 'v': '5.6', 'p': '1.8754', 'L': 'ZeroMinusTick', 'i': 'cf9d7317-89b2-5db9-8d00-dea3e8c4a670', 'BT': False, 'RPI': False, 'seq': 225913470987}]}
 ```
 
-As shown above, trades for the 6-second kline arrived at 19:03:06,060 after the candle boundary, causing the data to be included in the next candle instead of the correct one.
+Trades (check timestamps above) may arrive after a candle boundary and thus get included in the _next_ candle.
+
+---
 
 ### Aggregator Waiter Mode
 
-To mitigate this, enable **Aggregator Waiter Mode** with `AGGREGATOR_WAITER_MODE_ENABLED=true`:
+To help with delivery delays, set `STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true`:
 
--   **With waiter mode enabled**: When closing a candle that contains trades, the aggregator waits up to 80ms for potentially delayed trades before finalizing the OHLC data
--   **With waiter mode disabled**: Candles close immediately at interval boundaries, which is faster but may miss late-arriving trades
+-   **Enabled:** Aggregator waits up to 80ms after candle close if any trades arrived for that candle.
+-   **Disabled:** Candles close immediately; you may miss late trades.
 
-**Recommendation**: Keep waiter mode enabled for production use to ensure data accuracy, despite the slight performance impact.
+**Recommended:** Enable waiter mode in production for data accuracy.
 
 ---
 
 ## Extending
 
-### Adding Custom Consumers
+### Add Custom Consumers
 
-You can create custom consumers by implementing the `BaseConsumer` interface:
+Subclass the `BaseConsumer` interface:
 
 ```python
 from streamer.consumers.base import BaseConsumer
@@ -193,51 +199,41 @@ class MyCustomConsumer(BaseConsumer):
         super().__init__(name)
 
     def validate(self) -> None:
-        # Add your validation logic here
+        # Validation logic here
         pass
 
     async def setup(self) -> None:
-        # Initialize your consumer resources
+        # Resource setup logic
         pass
 
     async def start(self) -> None:
-        # Start your consumer
+        # Start logic
         self._is_running = True
 
     async def consume(self, data: List[Dict[str, Any]]) -> None:
-        # Process the kline data
         if not self._is_running:
             return
-        # Your logic here
+        # Your kline processing here
 
     async def stop(self) -> None:
-        # Cleanup resources
+        # Cleanup logic
         self._is_running = False
 ```
 
-Register your consumer:
+Register your consumer and enable it in `.env`:
 
 ```python
 from streamer.consumers import ConsumerManager
-
-# Register your consumer
 ConsumerManager.register_consumer("mycustom", MyCustomConsumer)
-
-# Add to ENABLED_CONSUMERS in .env
-ENABLED_CONSUMERS=console,mycustom
+# Add "mycustom" to STREAMER_ENABLED_CONSUMERS in your .env
 ```
 
-### Examples
+#### Full Examples
 
-See `examples/custom_consumer_example.py` for complete examples of custom consumers including:
+See `examples/custom_consumer_example.py`:
 
--   File consumer (writes to JSONL files)
-
-Built-in consumers (ready to use without registration):
-
--   `console` - Prints data to stdout
--   `redis` - Publishes to Redis channels
--   `websocket` - Serves WebSocket connections
+-   File consumer (writes JSONL)
+-   Console, Redis, and WebSocket consumers are built in and work out of the box
 
 ---
 
@@ -245,34 +241,25 @@ Built-in consumers (ready to use without registration):
 
 ### Code Quality
 
-The project uses comprehensive linting and type checking:
+-   **Ruff:** Fast linter/formatter
+-   **MyPy:** Static type checker
+-   **Black:** Code formatting (via Ruff)
 
--   **Ruff**: Fast Python linter and formatter
--   **MyPy**: Static type checker
--   **Black**: Code formatter (via Ruff)
-
-### Available Commands
+### Commands
 
 ```bash
-# Install dependencies
-make install
-
-# Run the application
-make run
-
-# Code quality checks
-make check-all    # Run all checks (format + lint + mypy)
-make lint         # Run only linter
-make format       # Run only formatter
-make mypy         # Run only type checker
-
-# Clean cache files
-make clean
+make install      # Install dependencies
+make run          # Run the application
+make check-all    # Run all checks (format, lint, mypy)
+make lint         # Linter only
+make format       # Formatter only
+make mypy         # Type checker only
+make clean        # Remove cache files
 ```
 
 ### Pre-commit Hooks
 
-Run pre-commit hooks before submitting changes:
+Before submitting changes:
 
 ```bash
 pre-commit run --all-files
@@ -283,5 +270,3 @@ pre-commit run --all-files
 ## License
 
 MIT © Daniil Pavlovich
-
----
