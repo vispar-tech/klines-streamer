@@ -22,6 +22,8 @@ A Python service that **aggregates trades from Bybit’s WebSocket API into cand
 
 ## Usage
 
+### Local Development
+
 1. **Clone the repo:**
 
     ```bash
@@ -43,48 +45,86 @@ A Python service that **aggregates trades from Bybit’s WebSocket API into cand
     cp .env.example .env
     ```
 
+### Docker Deployment
+
+1. **Build and run with Docker Compose:**
+
+    ```bash
+    docker-compose up --build
+    ```
+
+2. **Run in background:**
+
+    ```bash
+    docker-compose up -d --build
+    ```
+
+3. **View logs:**
+
+    ```bash
+    docker-compose logs -f streamer
+    ```
+
+4. **Stop the service:**
+
+    ```bash
+    docker-compose down
+    ```
+
+#### Production with Traefik
+
+For production deployments with SSL termination using Traefik:
+
+```bash
+docker-compose -f docker-compose.traefik.yaml up -d --build
+```
+
+Make sure to set `STREAMER_HOST` and `STREAMER_WEBSOCKET_PORT` environment variables for Traefik routing.
+
+> **Note:** This project does not include Traefik setup itself. We hope you already have your own Traefik instance running with the `traefiktointernet` network configured! 🏃‍♂️
+
     Configure your consumer settings. The service supports multiple output destinations:
 
     Example `.env`:
 
     ```bash
     # Consumer selection (comma-separated list)
-    ENABLED_CONSUMERS=console,redis,websocket
+    STREAMER_ENABLED_CONSUMERS=console,redis,websocket
 
     # Redis settings (required only if Redis consumer is enabled)
-    REDIS_URL=redis://localhost:6379/0
-    REDIS_CHANNEL=klines
+    STREAMER_REDIS_URL=redis://localhost:6379/0
+    STREAMER_REDIS_CHANNEL=klines
 
     # WebSocket settings (required only if WebSocket consumer is enabled)
-    WEBSOCKET_HOST=localhost
-    WEBSOCKET_PORT=9500
-    WEBSOCKET_URL=wss://localhost:9500
-    WSS_AUTH_KEY=your_secret_key
-    WSS_AUTH_USER=your_username
+    STREAMER_WEBSOCKET_HOST=localhost
+    STREAMER_WEBSOCKET_PORT=9500
+    STREAMER_WEBSOCKET_URL=wss://localhost:9500
+    STREAMER_WSS_AUTH_KEY=your_secret_key
+    STREAMER_WSS_AUTH_USER=your_username
 
     # Symbol configuration
-    BYBIT_LOAD_ALL_SYMBOLS=false
-    BYBIT_SYMBOLS=BTCUSDT,ETHUSDT
-    BYBIT_SYMBOLS_LIMIT=
-    BYBIT_SOCKET_POOL_SIZE=5
+    STREAMER_BYBIT_LOAD_ALL_SYMBOLS=false
+    STREAMER_BYBIT_SYMBOLS=BTCUSDT,ETHUSDT
+    STREAMER_BYBIT_SYMBOLS_LIMIT=
+    STREAMER_BYBIT_SOCKET_POOL_SIZE=5
 
     # Kline intervals
-    KLINE_INTERVALS=1m,5m,1h
+    STREAMER_KLINE_INTERVALS=1m,5m,1h
 
     # Aggregator settings
-    AGGREGATOR_WAITER_MODE_ENABLED=true
+    STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true
 
     # Logging
-    LOG_LEVEL=INFO
+    STREAMER_LOG_LEVEL=INFO
     ```
 
-    > **If using WSS (WebSocket) output:**  
-    > Set environment variables for **WebSocket authorization and key** to protect your stream.  
+    > **If using WSS (WebSocket) output:**
+    > Set environment variables for **WebSocket authorization and key** to protect your stream.
     > Example:
     >
     > ```
-    > WSS_AUTH_KEY=your_secret_key
-    > WSS_AUTH_USER=your_username
+    > STREAMER_WSS_AUTH_KEY=your_secret_key
+    > STREAMER_WSS_AUTH_USER=your_username
     > ```
     >
     > The service checks these credentials for incoming WSS connections.

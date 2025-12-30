@@ -1,0 +1,28 @@
+version: "3"
+
+networks:
+  traefiktointernet:
+    external: true
+
+services:
+  streamer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamer
+    networks:
+      - traefiktointernet
+    volumes:
+      - ./logs:/usr/src/logs
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefiktointernet
+
+      - traefik.http.routers.streamer.entrypoints=websecure
+      - traefik.http.routers.streamer.rule=Host(`${STREAMER_HOST}`)
+      - traefik.http.routers.streamer.tls=true
+      - traefik.http.routers.streamer.tls.certresolver=letsencrypt
+
+      - traefik.http.services.streamer.loadbalancer.server.port=${STREAMER_WEBSOCKET_PORT}
+    env_file:
+      - .env
