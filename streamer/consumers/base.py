@@ -47,7 +47,7 @@ class BaseConsumer(ABC):
         Consume and process kline data.
 
         Args:
-            data: Kline data dictionary containing symbol, interval, and candle data
+            data: Kline data dictionary containing symbol, interval, and kline data
         """
         ...
 

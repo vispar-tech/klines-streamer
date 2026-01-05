@@ -237,7 +237,7 @@ class WebSocketConsumer(BaseConsumer):
         Consume kline data and broadcast to WebSocket clients.
 
         Args:
-            data: Kline data dictionary containing symbol, interval, and candle data.
+            data: Kline data dictionary containing symbol, interval, and kline data.
         """
         if not self._is_running:
             return

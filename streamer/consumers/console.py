@@ -49,7 +49,7 @@ class ConsoleConsumer(BaseConsumer):
         Print kline data to console, converting timestamp to readable time.
 
         Args:
-            data: Kline data dictionary containing symbol, interval, and candle data.
+            data: Kline data dictionary containing symbol, interval, and kline data.
         """
         if not self._is_running:
             return

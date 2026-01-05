@@ -1,8 +1,8 @@
 """Application settings using Pydantic."""
 
-from typing import Annotated, Any, List, Set
+from typing import Annotated, Any, Set
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from streamer.types import Interval
@@ -12,10 +12,10 @@ class Settings(BaseSettings):
     """Application configuration settings."""
 
     # Bybit configuration
-    bybit_symbols: Annotated[List[str], NoDecode] = ["BTCUSDT", "ETHUSDT"]
+    bybit_symbols: Annotated[set[str], NoDecode] = {"BTCUSDT", "ETHUSDT"}
     bybit_load_all_symbols: bool = False
     bybit_symbols_limit: int | None = None
-    bybit_socket_pool_size: int = 5
+    bybit_socket_pool_size: int = 50
     kline_intervals: Annotated[Set[Interval], NoDecode] = set()
 
     # Redis configuration
@@ -35,10 +35,12 @@ class Settings(BaseSettings):
     wss_auth_user: str | None = None
 
     # Consumer configuration
-    enabled_consumers: Annotated[List[str], NoDecode] = ["console"]
+    enabled_consumers: Annotated[Set[str], NoDecode] = {"console"}
 
     # Aggregator configuration
     aggregator_waiter_mode_enabled: bool = True
+    aggregator_waiter_latency_ms: int = 80
+    klines_mode: bool = False
 
     # Logging configuration
     log_level: str = "INFO"
@@ -47,8 +49,8 @@ class Settings(BaseSettings):
 
     @field_validator("bybit_symbols", mode="before")
     @classmethod
-    def validate_bybit_symbols(cls, value: Any) -> list[str]:
-        """Parse string or list to list of symbols."""
+    def validate_bybit_symbols(cls, value: Any) -> set[str]:
+        """Parse string or list to set of symbols."""
         items: list[str] = []
         if isinstance(value, str):
             items.extend([v.strip() for v in value.split(",") if v.strip()])
@@ -56,7 +58,7 @@ class Settings(BaseSettings):
             for v in value:
                 if isinstance(v, str):
                     items.extend([s.strip() for s in v.split(",") if s.strip()])
-        return [x for x in items if x]
+        return {x for x in items if x}
 
     @field_validator("kline_intervals", mode="before")
     @classmethod
@@ -73,8 +75,8 @@ class Settings(BaseSettings):
 
     @field_validator("enabled_consumers", mode="before")
     @classmethod
-    def validate_enabled_consumers(cls, value: Any) -> list[str]:
-        """Parse string or list to a normalized list of enabled consumers."""
+    def validate_enabled_consumers(cls, value: Any) -> set[str]:
+        """Parse string or list to a normalized set of enabled consumers."""
         items: list[str] = []
         if isinstance(value, str):
             items.extend([v.strip() for v in value.split(",") if v.strip()])
@@ -82,7 +84,29 @@ class Settings(BaseSettings):
             for v in value:
                 if isinstance(v, str):
                     items.extend([s.strip() for s in v.split(",") if s.strip()])
-        return [x for x in items if x]
+        return {x for x in items if x}
+
+    @model_validator(mode="after")
+    def validate_klines_mode_intervals(self) -> "Settings":
+        """Validate that all intervals are available in klines mode when enabled."""
+        if self.klines_mode:
+            available_intervals = Interval.get_klines_mode_available_intervals()
+            invalid_intervals = {
+                interval
+                for interval in self.kline_intervals
+                if interval not in available_intervals
+            }
+            if invalid_intervals:
+                raise ValueError(
+                    f"Invalid intervals for klines mode: {invalid_intervals}. "
+                    f"Available intervals: {available_intervals}"
+                )
+            if self.aggregator_waiter_mode_enabled:
+                raise ValueError(
+                    "aggregator_waiter_mode_enabled cannot be True in klines mode; "
+                    "set to False."
+                )
+        return self
 
     model_config = SettingsConfigDict(
         env_file=".env",

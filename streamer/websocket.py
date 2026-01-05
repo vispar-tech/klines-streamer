@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Callable, Coroutine, Dict, List
+from typing import Any, Callable, Coroutine, Dict, List, Set
 
 import orjson
 import websockets
@@ -20,6 +20,7 @@ class WebSocketClient:
     def __init__(
         self,
         on_trade: Callable[[Any], Coroutine[Any, Any, None]],
+        on_kline: Callable[[Any], Coroutine[Any, Any, None]],
         url: str = "wss://stream.bybit.com/v5/public/linear",
     ) -> None:
         """Initialize WebSocket client with pool support.
@@ -32,8 +33,16 @@ class WebSocketClient:
         """
         self.symbols = settings.bybit_symbols
         self.on_trade = on_trade
+        self.on_kline = on_kline
         self.url = url
         self.pool_size = settings.bybit_socket_pool_size
+
+        if settings.klines_mode:
+            self.topic_part = "kline."
+            self.topic = "kline.{interval}.{symbol}"
+        else:
+            self.topic_part = "publicTrade."
+            self.topic = "publicTrade.{symbol}"
 
         # Pool management
         self._running = False
@@ -94,19 +103,19 @@ class WebSocketClient:
 
         logger.info("WebSocketClient stopped")
 
-    def _distribute_symbols(self, symbols: List[str]) -> List[List[str]]:
+    def _distribute_symbols(self, symbols: set[str]) -> List[set[str]]:
         """Distribute symbols across socket pool."""
         if self.pool_size <= 1:
-            return [symbols]
+            return [set(symbols)]
 
         # Simple round-robin distribution
-        distributed: list[list[str]] = [[] for _ in range(self.pool_size)]
+        distributed: list[set[str]] = [set() for _ in range(self.pool_size)]
         for i, symbol in enumerate(symbols):
-            distributed[i % self.pool_size].append(symbol)
+            distributed[i % self.pool_size].add(symbol)
 
         return distributed
 
-    async def _run_socket(self, socket_id: int, symbols: List[str]) -> None:
+    async def _run_socket(self, socket_id: int, symbols: Set[str]) -> None:
         """Run a single WebSocket connection."""
         while self._running:
             try:
@@ -144,9 +153,16 @@ class WebSocketClient:
 
         logger.info(f"Socket {socket_id}: Stopped")
 
-    async def _subscribe(self, websocket: ClientConnection, symbols: List[str]) -> None:
+    async def _subscribe(self, websocket: ClientConnection, symbols: Set[str]) -> None:
         """Subscribe to public trade streams for assigned symbols."""
-        args = [f"publicTrade.{symbol}" for symbol in symbols]
+        if settings.klines_mode:
+            args = [
+                self.topic.format(symbol=symbol, interval=interval.to_bybit())
+                for interval in settings.kline_intervals
+                for symbol in symbols
+            ]
+        else:
+            args = [self.topic.format(symbol=symbol) for symbol in symbols]
         subscription_msg = {"op": "subscribe", "args": args}
 
         await websocket.send(orjson.dumps(subscription_msg).decode("utf-8"))
@@ -179,15 +195,18 @@ class WebSocketClient:
                 return
 
             topic = data["topic"]
-            if not topic.startswith("publicTrade"):
+            if not topic.startswith(self.topic_part):
                 return
 
             trades = data["data"]
             if not trades:
                 return
 
-            # Handle trade data
-            await self.on_trade(data)
+            if settings.klines_mode:
+                await self.on_kline(data)
+            else:
+                # Handle trade data
+                await self.on_trade(data)
 
         except orjson.JSONDecodeError as e:
             logger.error(f"Failed to parse message: {e}, message: {message!s}")

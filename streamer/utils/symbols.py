@@ -58,7 +58,11 @@ async def load_all_symbols(limit: int | None = None) -> set[str]:
                     and "launchTime" in item
                 ]
                 sorted_items = sorted(valid_items, key=lambda x: x["launchTime"])
-                new_symbols = [item["symbol"] for item in sorted_items]
+                new_symbols = [
+                    str(item["symbol"])
+                    for item in sorted_items
+                    if str(item["symbol"]).endswith("USDT")
+                ]
                 result_symbols.extend(new_symbols)
                 total_seen += len(new_symbols)
 
@@ -88,26 +92,26 @@ async def load_all_symbols(limit: int | None = None) -> set[str]:
         return set()
 
 
-async def validate_symbols(symbols: list[str]) -> list[str]:
+async def validate_symbols(symbols: set[str]) -> set[str]:
     """
-    Validate symbols against Bybit API and return valid ones.
+    Validate symbols against Bybit API and return valid ones as a set.
 
     Args:
         symbols: List of symbols to validate
 
     Returns:
-        List of valid symbols (invalid ones are logged as warnings)
+        Set of valid symbols (invalid ones are logged as warnings)
     """
     if not symbols:
-        return []
+        return set()
 
     try:
         available_symbols = await load_all_symbols()
-        valid_symbols: list[str] = []
+        valid_symbols: set[str] = set()
 
         for symbol in symbols:
             if symbol in available_symbols:
-                valid_symbols.append(symbol)
+                valid_symbols.add(symbol)
             else:
                 logger.warning(f"Symbol '{symbol}' is not available on Bybit, skipping")
 
@@ -118,7 +122,7 @@ async def validate_symbols(symbols: list[str]) -> list[str]:
 
     except Exception as exc:
         logger.warning(f"Failed to validate symbols, using original list: {exc}")
-        return symbols
+        return set(symbols)
 
 
 async def validate_settings_symbols() -> None:
@@ -129,9 +133,7 @@ async def validate_settings_symbols() -> None:
     """
     if settings.bybit_load_all_symbols:
         # Load all symbols from Bybit API
-        all_symbols = await load_all_symbols(settings.bybit_symbols_limit)
-        settings.bybit_symbols = list(all_symbols)
+        settings.bybit_symbols = await load_all_symbols(settings.bybit_symbols_limit)
     else:
         # Validate provided symbols
-        validated_symbols = await validate_symbols(settings.bybit_symbols)
-        settings.bybit_symbols = validated_symbols
+        settings.bybit_symbols = await validate_symbols(settings.bybit_symbols)

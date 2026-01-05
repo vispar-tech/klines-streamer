@@ -1,11 +1,12 @@
 """Pluggable consumers for outputting kline data."""
 
 import logging
-from typing import Dict, List, Type
+from typing import Dict, List, Set, Type
 
 from streamer.consumers.base import BaseConsumer
 from streamer.consumers.console import ConsoleConsumer
 from streamer.consumers.redis import RedisConsumer
+from streamer.consumers.validator import ValidatorConsumer
 from streamer.consumers.websocket import WebSocketConsumer
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class ConsumerRegistry:
         self.register("console", ConsoleConsumer)
         self.register("redis", RedisConsumer)
         self.register("websocket", WebSocketConsumer)
+        self.register("validator", ValidatorConsumer)
 
     def register(self, name: str, consumer_class: Type[BaseConsumer]) -> None:
         """
@@ -78,7 +80,7 @@ class ConsumerRegistry:
         """List all registered consumer names."""
         return list(self._registry.keys())
 
-    def validate_consumers(self, consumer_names: List[str]) -> List[str]:
+    def validate_consumers(self, consumer_names: Set[str]) -> List[str]:
         """
         Validate a list of consumer names.
 
@@ -101,7 +103,7 @@ class ConsumerRegistry:
 
         return errors
 
-    def create_consumers(self, consumer_names: List[str]) -> List[BaseConsumer]:
+    def create_consumers(self, consumer_names: Set[str]) -> List[BaseConsumer]:
         """
         Create consumer instances for the given names.
 
@@ -164,7 +166,7 @@ class ConsumerManager:
         return cls._registry.list_consumers()
 
     @classmethod
-    async def setup_consumers(cls, enabled_consumers: List[str]) -> List[BaseConsumer]:
+    async def setup_consumers(cls, enabled_consumers: Set[str]) -> List[BaseConsumer]:
         """
         Set up consumers.
 

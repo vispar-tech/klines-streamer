@@ -50,7 +50,7 @@ async def main_async() -> None:
 
             # Create WebSocket client with pool support and connect to aggregator
             websocket_client = WebSocketClient(
-                on_trade=aggregator.handle_trade,
+                on_trade=aggregator.handle_trade, on_kline=aggregator.handle_kline
             )
 
             # Run aggregator timer
