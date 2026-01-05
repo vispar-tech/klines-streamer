@@ -58,7 +58,11 @@ async def load_all_symbols(limit: int | None = None) -> set[str]:
                     and "launchTime" in item
                 ]
                 sorted_items = sorted(valid_items, key=lambda x: x["launchTime"])
-                new_symbols = [item["symbol"] for item in sorted_items]
+                new_symbols = [
+                    str(item["symbol"])
+                    for item in sorted_items
+                    if str(item["symbol"]).endswith("USDT")
+                ]
                 result_symbols.extend(new_symbols)
                 total_seen += len(new_symbols)
 

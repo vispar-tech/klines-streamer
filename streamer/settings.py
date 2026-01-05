@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     bybit_symbols: Annotated[set[str], NoDecode] = {"BTCUSDT", "ETHUSDT"}
     bybit_load_all_symbols: bool = False
     bybit_symbols_limit: int | None = None
-    bybit_socket_pool_size: int = 5
+    bybit_socket_pool_size: int = 50
     kline_intervals: Annotated[Set[Interval], NoDecode] = set()
 
     # Redis configuration

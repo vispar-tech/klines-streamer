@@ -46,7 +46,7 @@ include = ["streamer/**/*.py"]
 line-length = 88
 fix = true
 unsafe-fixes = true
-exclude = []
+exclude = ["debug"]
 
 [tool.ruff.lint]
 select = [
@@ -89,9 +89,7 @@ pylint = { allow-magic-value-types = ["int", "str", "float", "bytes"], max-args 
 "examples/*" = [
     "T201",
 ]
-"debug/*" = [
-    "T201",
-]
+
 
 
 

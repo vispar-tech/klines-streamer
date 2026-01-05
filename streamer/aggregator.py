@@ -144,8 +144,8 @@ class Aggregator:
                         "n": 1,
                     }
                 else:
-                    bucket["h"] = max(bucket["h"], price, bucket["o"], bucket["c"])
-                    bucket["l"] = min(bucket["l"], price, bucket["o"], bucket["c"])
+                    bucket["h"] = max(bucket["h"], price)
+                    bucket["l"] = min(bucket["l"], price)
                     bucket["c"] = price
                     bucket["v"] += volume
                     bucket["n"] += 1
@@ -287,8 +287,9 @@ class Aggregator:
                         "interval": interval_ms,
                         "timestamp": start,
                         "open": bucket["o"],
-                        "high": bucket["h"],
-                        "low": bucket["l"],
+                        # todo: rework calc ohcl in main trade handle
+                        "high": max(bucket["o"], bucket["h"], bucket["l"], bucket["c"]),
+                        "low": min(bucket["o"], bucket["h"], bucket["l"], bucket["c"]),
                         "close": bucket["c"],
                         "volume": bucket["v"],
                         "trade_count": bucket["n"],

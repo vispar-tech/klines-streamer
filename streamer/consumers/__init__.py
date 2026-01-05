@@ -6,6 +6,7 @@ from typing import Dict, List, Set, Type
 from streamer.consumers.base import BaseConsumer
 from streamer.consumers.console import ConsoleConsumer
 from streamer.consumers.redis import RedisConsumer
+from streamer.consumers.validator import ValidatorConsumer
 from streamer.consumers.websocket import WebSocketConsumer
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class ConsumerRegistry:
         self.register("console", ConsoleConsumer)
         self.register("redis", RedisConsumer)
         self.register("websocket", WebSocketConsumer)
+        self.register("validator", ValidatorConsumer)
 
     def register(self, name: str, consumer_class: Type[BaseConsumer]) -> None:
         """
