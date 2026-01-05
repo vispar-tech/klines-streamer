@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     aggregator_waiter_latency_ms: int = 80
     klines_mode: bool = False
 
+    # Storage configuration
+    storage_enabled: bool = False
+
     # Logging configuration
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
