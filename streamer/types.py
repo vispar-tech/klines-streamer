@@ -1,7 +1,7 @@
 """Type definitions and utilities for the streamer package."""
 
 import re
-from typing import Any, ClassVar, Dict, Union
+from typing import Any, ClassVar, Dict, Self, Union
 
 
 class Interval:
@@ -20,6 +20,22 @@ class Interval:
     Can also be constructed from integer milliseconds directly.
     """
 
+    _KLINES_MODE_AVAILABLE_INTERVALS: ClassVar[set[str]] = {
+        "1m",
+        "3m",
+        "5m",
+        "15m",
+        "30m",
+        "60m",
+        "120m",
+        "240m",
+        "360m",
+        "720m",
+        "1D",
+        "1W",
+        "1M",
+    }
+
     # Conversion factors to milliseconds
     _UNITS: ClassVar[Dict[str, int]] = {
         "ms": 1,  # milliseconds
@@ -27,10 +43,11 @@ class Interval:
         "m": 60 * 1000,  # minutes to milliseconds
         "h": 60 * 60 * 1000,  # hours to milliseconds
         "D": 24 * 60 * 60 * 1000,  # days to milliseconds
+        "W": 7 * 24 * 60 * 60 * 1000,  # weeks to milliseconds
         "M": 30 * 24 * 60 * 60 * 1000,  # months (30 days) to milliseconds
     }
 
-    _PATTERN = re.compile(r"^(\d+)(ms|[smhDM])$")
+    _PATTERN = re.compile(r"^(\d+)(ms|[smhDWM])$")
     _MIN_MILLISECONDS = 100
 
     def __init__(self, interval: Union[str, int]) -> None:
@@ -102,6 +119,42 @@ class Interval:
             f"Cannot convert value of type {type(value).__name__} to Interval"
         )
 
+    @classmethod
+    def get_klines_mode_available_intervals(cls) -> set[Self]:
+        """Get list of available intervals for klines mode."""
+        return {cls(x) for x in cls._KLINES_MODE_AVAILABLE_INTERVALS}
+
+    def to_bybit(self) -> str:
+        """
+        Convert this interval to Bybit's REST/WebSocket convention for intervals.
+
+        Minutes: '1', '3', '5', '15', '30', '60', '120', '240', '360', '720'
+        Day: 'D'
+        Week: 'W'
+        Month: 'M'
+
+        Returns:
+            str: Bybit interval string.
+
+        Raises:
+            ValueError: If the interval cannot be represented in Bybit format.
+        """
+        self.to_milliseconds()
+        # Minutes intervals
+        minutes_map = {1, 3, 5, 15, 30, 60, 120, 240, 360, 720}
+        if self.unit == "m" and self.value in minutes_map:
+            return str(self.value)
+        # Day
+        if self.unit == "d" and self.value == 1:
+            return "D"
+        # Week
+        if self.unit == "w" and self.value == 1:
+            return "W"
+        # Month
+        if self.unit == "M" and self.value == 1:
+            return "M"
+        raise ValueError(f"Interval '{self!s}' cannot be represented in Bybit format")
+
     def to_milliseconds(self) -> int:
         """Convert interval to milliseconds."""
         return self.value * self._UNITS[self.unit]
@@ -118,10 +171,6 @@ class Interval:
         """Representation of the interval."""
         return self.raw
 
-    def __repr__(self) -> str:
-        """Developer representation."""
-        return f"Interval('{self.raw}')"
-
     def __eq__(self, other: object) -> bool:
         """Check equality based on milliseconds."""
         if not isinstance(other, Interval):
@@ -135,3 +184,7 @@ class Interval:
     def __lt__(self, other: "Interval") -> bool:
         """Compare intervals."""
         return self.to_milliseconds() < other.to_milliseconds()
+
+    def __repr__(self) -> str:
+        """Developer representation."""
+        return self.raw

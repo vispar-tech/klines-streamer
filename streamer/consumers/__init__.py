@@ -1,7 +1,7 @@
 """Pluggable consumers for outputting kline data."""
 
 import logging
-from typing import Dict, List, Type
+from typing import Dict, List, Set, Type
 
 from streamer.consumers.base import BaseConsumer
 from streamer.consumers.console import ConsoleConsumer
@@ -78,7 +78,7 @@ class ConsumerRegistry:
         """List all registered consumer names."""
         return list(self._registry.keys())
 
-    def validate_consumers(self, consumer_names: List[str]) -> List[str]:
+    def validate_consumers(self, consumer_names: Set[str]) -> List[str]:
         """
         Validate a list of consumer names.
 
@@ -101,7 +101,7 @@ class ConsumerRegistry:
 
         return errors
 
-    def create_consumers(self, consumer_names: List[str]) -> List[BaseConsumer]:
+    def create_consumers(self, consumer_names: Set[str]) -> List[BaseConsumer]:
         """
         Create consumer instances for the given names.
 
@@ -164,7 +164,7 @@ class ConsumerManager:
         return cls._registry.list_consumers()
 
     @classmethod
-    async def setup_consumers(cls, enabled_consumers: List[str]) -> List[BaseConsumer]:
+    async def setup_consumers(cls, enabled_consumers: Set[str]) -> List[BaseConsumer]:
         """
         Set up consumers.
 

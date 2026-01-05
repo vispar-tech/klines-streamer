@@ -116,6 +116,7 @@ STREAMER_KLINE_INTERVALS=1m,5m,1h
 # Aggregator
 STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true
 STREAMER_AGGREGATOR_WAITER_LATENCY_MS=80
+STREAMER_KLINES_MODE=false
 
 # Logging
 STREAMER_LOG_LEVEL=INFO
@@ -185,6 +186,57 @@ To help with delivery delays, set `STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true`
 Configure the wait latency with `STREAMER_AGGREGATOR_WAITER_LATENCY_MS` (in milliseconds).
 
 **Recommended:** Enable waiter mode in production for data accuracy.
+
+---
+
+### Klines Mode
+
+Klines mode provides more stable data but with higher latency compared to trade-based aggregation:
+
+-   **Enabled (`STREAMER_KLINES_MODE=true`):** Uses Bybit's kline subscriptions for data. More stable candle data with ~1 second latency from Bybit.
+-   **Disabled (`STREAMER_KLINES_MODE=false`):** Uses trade-based aggregation (default). Can be configured for low-latency data (80-150ms) using waiter mode.
+
+When klines mode is enabled:
+- Only specific intervals are supported (see `Interval.get_klines_mode_available_intervals()`)
+- Waiter mode is automatically disabled (cannot be used together)
+- Data is more reliable but has higher latency
+
+#### Data Structures
+
+**Klines Mode Response:**
+```json
+{
+  "start": 1767621900000,
+  "end": 1767621959999,
+  "interval": "1",
+  "open": "652.3",
+  "close": "652.3",
+  "high": "652.4",
+  "low": "652.2",
+  "volume": "0.23",
+  "turnover": "150.029",
+  "confirm": true,
+  "timestamp": 1767621960179,
+  "symbol": "BCHPERP"
+}
+```
+
+**Trade-based Mode Response:**
+```json
+{
+  "symbol": "PIPPINUSDT",
+  "interval": 60000,
+  "timestamp": 1767623520000,
+  "open": 0.34193,
+  "high": 0.34193,
+  "low": 0.33916,
+  "close": 0.33922,
+  "volume": 220.0,
+  "trade_count": 5
+}
+```
+
+**Recommended:** Use klines mode for applications requiring data stability over low latency. Use trade-based mode with waiter for real-time applications.
 
 ---
 

@@ -89,6 +89,10 @@ pylint = { allow-magic-value-types = ["int", "str", "float", "bytes"], max-args 
 "examples/*" = [
     "T201",
 ]
+"debug/*" = [
+    "T201",
+]
+
 
 
 [tool.ruff.format]

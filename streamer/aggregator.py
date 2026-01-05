@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from streamer.broadcaster import Broadcaster
 from streamer.settings import settings
@@ -20,55 +20,77 @@ class Aggregator:
 
     __slots__ = (
         "_broadcaster",
-        "_buckets",
-        "_first_candle_skipped",
         "_interval_ms_map",
+        "_interval_str_ms_map",
         "_intervals_sorted",
-        "_last_close",
+        "_klines_last_closed",
+        "_klines_store",
+        "_klines_total_symbols_count",
         "_min_interval_ms",
         "_running",
         "_timer_task",
         "_timer_ticks_count",
-        "_waiter_latency_ms",
-        "_waiter_mode_enabled",
+        "_trades_buckets",
+        "_trades_first_kline_skipped",
+        "_trades_last_close",
+        "_trades_waiter_latency_ms",
+        "_trades_waiter_mode_enabled",
     )
 
     def __init__(self, broadcaster: Broadcaster) -> None:
         """Initialize the Aggregator with the provided broadcaster."""
         self._broadcaster = broadcaster
         self._running = False
-        self._timer_task: asyncio.Task[None] | None = None
 
         intervals = settings.kline_intervals
         self._interval_ms_map: Dict["Interval", int] = {
             i: i.to_milliseconds() for i in intervals
         }
+        self._interval_str_ms_map: Dict[str, int] = {
+            i.to_bybit(): i.to_milliseconds() for i in intervals
+        }
         self._intervals_sorted = tuple(sorted(self._interval_ms_map.values()))
         self._min_interval_ms = self._intervals_sorted[0]
 
+        ### TRADES MODE VARS
         # symbol -> interval_ms -> bucket
-        self._buckets: Dict[str, Dict[int, Dict[str, Any]]] = {}
+        self._trades_buckets: Dict[str, Dict[int, Dict[str, Any]]] = {}
 
         # symbol -> interval_ms -> last_close
-        self._last_close: Dict[str, Dict[int, float]] = {}
+        self._trades_last_close: Dict[str, Dict[int, float]] = {}
 
-        # symbol -> interval_ms -> bool (first candle skipped)
-        self._first_candle_skipped: Dict[str, Dict[int, bool]] = {}
+        # symbol -> interval_ms -> bool (first kline skipped)
+        self._trades_first_kline_skipped: Dict[str, Dict[int, bool]] = {}
 
         # Configuration
-        self._waiter_mode_enabled = settings.aggregator_waiter_mode_enabled
-        self._waiter_latency_ms = settings.aggregator_waiter_latency_ms
+        self._trades_waiter_mode_enabled = settings.aggregator_waiter_mode_enabled
+        self._trades_waiter_latency_ms = settings.aggregator_waiter_latency_ms
 
+        ### KLINES MODE VARS
+        # symbol -> interval_ms -> full kline object
+        self._klines_store: Dict[str, Dict[int, Dict[str, Any]]] = {}
+        # interval_ms -> -> kline_start_ms -> list[full kline object]
+        self._klines_last_closed: Dict[int, Dict[int, List[Dict[str, Any]]]] = {}
+
+        self._klines_total_symbols_count = len(settings.bybit_symbols)
+
+        ### TIMER
+        self._timer_task: asyncio.Task[None] | None = None
         self._timer_ticks_count = 0
-
         if logger.isEnabledFor(logging.INFO):
-            logger.info(
-                "Aggregator initialized with intervals: %s, waiter_mode: %s, "
-                "waiter_latency: %sms",
-                ",".join(str(i) for i in sorted(intervals)),
-                self._waiter_mode_enabled,
-                self._waiter_latency_ms,
-            )
+            if settings.klines_mode:
+                logger.info(
+                    "Aggregator initialized with intervals: %s, mode: klines",
+                    ",".join(str(i) for i in sorted(intervals)),
+                )
+            else:
+                logger.info(
+                    "Aggregator initialized with intervals: %s, mode: trades, "
+                    "waiter_mode: %s, waiter_latency: %sms",
+                    ", ".join(str(i) for i in sorted(intervals)),
+                    self._trades_waiter_mode_enabled,
+                    self._trades_waiter_latency_ms,
+                )
 
     async def handle_trade(self, message: Dict[str, Any]) -> None:
         """Process a new trade message to update OHLC buckets."""
@@ -85,10 +107,10 @@ class Aggregator:
 
             # кешируем dict для быстрого доступа на все интервалы
             symbol_buckets = symbol_buckets_cache.setdefault(
-                symbol, self._buckets.setdefault(symbol, {})
+                symbol, self._trades_buckets.setdefault(symbol, {})
             )
             symbol_last_close = last_close_cache.setdefault(
-                symbol, self._last_close.setdefault(symbol, {})
+                symbol, self._trades_last_close.setdefault(symbol, {})
             )
 
             for interval_ms in self._intervals_sorted:
@@ -128,6 +150,46 @@ class Aggregator:
                     bucket["v"] += volume
                     bucket["n"] += 1
 
+    async def handle_kline(self, message: Dict[str, Any]) -> None:
+        """Process a new kline message to update collected klines in the store."""
+        topic = message["topic"]
+        colon_idx = topic.find(".")
+        if colon_idx < 0:
+            logger.error(f"Malformed kline topic: {topic}")
+            return
+
+        try:
+            _, interval_str, symbol = topic.split(".")
+            interval_ms = self._interval_str_ms_map[interval_str]
+        except Exception as e:
+            logger.error(f"Malformed kline topic: {topic}, error: {e}")
+            return
+
+        klines_data = message["data"]
+        if not klines_data:
+            return
+
+        symbol_store = self._klines_store.get(symbol)
+        if symbol_store is None:
+            symbol_store = {}
+            self._klines_store[symbol] = symbol_store
+
+        # last_closed_store now structured as Dict[int, Dict[int, List[Dict[str, Any]]]]
+        last_closed_all = self._klines_last_closed.get(interval_ms)
+        if last_closed_all is None:
+            last_closed_all = {}
+            self._klines_last_closed[interval_ms] = last_closed_all
+
+        # Overwrite with freshest data for this interval
+        for kline in klines_data:
+            kline["symbol"] = symbol
+            if kline["confirm"]:
+                if kline["start"] not in last_closed_all:
+                    last_closed_all[kline["start"]] = []
+                last_closed_all[kline["start"]].append(kline)
+                continue
+            symbol_store[interval_ms] = kline
+
     async def start(self) -> None:
         """Start the aggregator's timer loop."""
         if self._running:
@@ -157,22 +219,27 @@ class Aggregator:
                 if sleep_s > 0:
                     await asyncio.sleep(sleep_s)
 
-                if self._waiter_mode_enabled:
+                if self._trades_waiter_mode_enabled:
                     await asyncio.sleep(
-                        self._waiter_latency_ms / 1000
+                        self._trades_waiter_latency_ms / 1000
                     )  # configurable extra delay in waiter mode
 
                 self._timer_ticks_count += 1
-                await self._close_candles(boundary)
+                if settings.klines_mode:
+                    await self._wait_klines(boundary)
+                else:
+                    await self._close_klines(boundary)
         except asyncio.CancelledError:
             raise
 
-    async def _close_candles(self, boundary_ms: int) -> None:
+    async def _close_klines(self, boundary_ms: int) -> None:
         out: list[dict[str, Any]] = []
 
-        for symbol, intervals in self._buckets.items():
-            last_close = self._last_close.setdefault(symbol, {})
-            first_candle_skipped = self._first_candle_skipped.setdefault(symbol, {})
+        for symbol, intervals in self._trades_buckets.items():
+            last_close = self._trades_last_close.setdefault(symbol, {})
+            first_kline_skipped = self._trades_first_kline_skipped.setdefault(
+                symbol, {}
+            )
 
             for interval_ms in self._intervals_sorted:
                 if boundary_ms % interval_ms != 0:
@@ -181,11 +248,11 @@ class Aggregator:
                 start = boundary_ms - interval_ms
                 bucket = intervals.get(interval_ms)
 
-                # If this is the first candle for this symbol-interval,
+                # If this is the first kline for this symbol-interval,
                 # skip it and remember to skip only once
-                if not first_candle_skipped.get(interval_ms, False):
+                if not first_kline_skipped.get(interval_ms, False):
                     # whether a bucket was formed or not, we skip first
-                    first_candle_skipped[interval_ms] = True
+                    first_kline_skipped[interval_ms] = True
                     # Still need to pop the interval and update last_close
                     # if a bucket exists
                     if bucket is not None:
@@ -229,5 +296,37 @@ class Aggregator:
                 )
 
         if out:
-            logger.debug(f"Closing {len(out)} candles at boundary {boundary_ms}")
+            logger.debug(f"Closing {len(out)} klines at boundary {boundary_ms}")
+            await self._broadcaster.handle(out)
+
+    async def _wait_klines(self, boundary_ms: int) -> None:
+        """Wait for closed klines per interval and collect them."""
+        out: list[dict[str, Any]] = []
+
+        for interval_ms in self._intervals_sorted:
+            if boundary_ms % interval_ms != 0:
+                continue
+
+            start_boundary = boundary_ms - interval_ms
+
+            while True:
+                closed_by_interval = self._klines_last_closed.setdefault(
+                    interval_ms, {}
+                )
+                closed = closed_by_interval.get(start_boundary, [])
+                if len(closed) >= self._klines_total_symbols_count:
+                    break
+                await asyncio.sleep(0.01)
+
+            # After wait, collect the closed klines for this interval,
+            # then remove (purge) them from self._klines_last_closed
+            closed_klines = self._klines_last_closed[interval_ms].pop(
+                start_boundary, []
+            )
+
+            if closed_klines:
+                out.extend(closed_klines)
+
+        if out:
+            logger.debug(f"Collect {len(out)} closed klines at boundary {boundary_ms}")
             await self._broadcaster.handle(out)

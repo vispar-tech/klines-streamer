@@ -56,7 +56,7 @@ class RedisConsumer(BaseConsumer):
         Consume kline data and publish to Redis.
 
         Args:
-            data: Kline data dictionary containing symbol, interval, and candle data
+            data: Kline data dictionary containing symbol, interval, and kline data
         """
         if not self._is_running or not self.redis:
             return

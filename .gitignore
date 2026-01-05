@@ -156,3 +156,5 @@ logs
 # Examples and output data folder
 debug
 output
+
+tests/
