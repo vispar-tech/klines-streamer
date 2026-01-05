@@ -21,6 +21,7 @@ class WebSocketClient:
         self,
         on_trade: Callable[[Any], Coroutine[Any, Any, None]],
         on_kline: Callable[[Any], Coroutine[Any, Any, None]],
+        ticker_storage_callback: Callable[[Any], Coroutine[Any, Any, None]],
         url: str = "wss://stream.bybit.com/v5/public/linear",
     ) -> None:
         """Initialize WebSocket client with pool support.
@@ -34,6 +35,7 @@ class WebSocketClient:
         self.symbols = settings.bybit_symbols
         self.on_trade = on_trade
         self.on_kline = on_kline
+        self.ticker_storage_callback = ticker_storage_callback
         self.url = url
         self.pool_size = settings.bybit_socket_pool_size
 
@@ -43,6 +45,9 @@ class WebSocketClient:
         else:
             self.topic_part = "publicTrade."
             self.topic = "publicTrade.{symbol}"
+
+        self.ticker_topic_part = "tickers."
+        self.ticker_topic = "tickers.{symbol}"
 
         # Pool management
         self._running = False
@@ -154,15 +159,19 @@ class WebSocketClient:
         logger.info(f"Socket {socket_id}: Stopped")
 
     async def _subscribe(self, websocket: ClientConnection, symbols: Set[str]) -> None:
-        """Subscribe to public trade streams for assigned symbols."""
+        """Subscribe to streams for assigned symbols (including tickers)."""
+        args: list[str] = []
+        # Add main stream topics (kline or trades)
         if settings.klines_mode:
-            args = [
+            args += [
                 self.topic.format(symbol=symbol, interval=interval.to_bybit())
                 for interval in settings.kline_intervals
                 for symbol in symbols
             ]
         else:
-            args = [self.topic.format(symbol=symbol) for symbol in symbols]
+            args += [self.topic.format(symbol=symbol) for symbol in symbols]
+        # Always add tickers.{symbol} for each symbol
+        args += [self.ticker_topic.format(symbol=symbol) for symbol in symbols]
         subscription_msg = {"op": "subscribe", "args": args}
 
         await websocket.send(orjson.dumps(subscription_msg).decode("utf-8"))
@@ -194,12 +203,17 @@ class WebSocketClient:
                 logger.debug(f"Subscription confirmed: {data}")
                 return
 
-            topic = data["topic"]
-            if not topic.startswith(self.topic_part):
+            topic = data.get("topic", "")
+            # Handle both main data stream (trade/kline) and tickers
+            if not (topic.startswith((self.topic_part, self.ticker_topic_part))):
                 return
 
-            trades = data["data"]
-            if not trades:
+            trades_or_data = data.get("data")
+            if not trades_or_data:
+                return
+
+            if topic.startswith(self.ticker_topic_part):
+                await self.ticker_storage_callback(data)
                 return
 
             if settings.klines_mode:

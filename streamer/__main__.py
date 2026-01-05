@@ -9,6 +9,7 @@ from streamer.aggregator import Aggregator
 from streamer.broadcaster import Broadcaster
 from streamer.consumers import BaseConsumer, ConsumerManager
 from streamer.settings import settings
+from streamer.storage import TickersStorage
 from streamer.utils import setup_logging, validate_settings_symbols
 from streamer.websocket import WebSocketClient
 
@@ -48,9 +49,14 @@ async def main_async() -> None:
             # Create aggregator that will send completed klines to broadcaster
             aggregator = Aggregator(broadcaster)
 
+            # Create main storage processor that will storage all data from websocket
+            storage = TickersStorage()
+
             # Create WebSocket client with pool support and connect to aggregator
             websocket_client = WebSocketClient(
-                on_trade=aggregator.handle_trade, on_kline=aggregator.handle_kline
+                on_trade=aggregator.handle_trade,
+                on_kline=aggregator.handle_kline,
+                ticker_storage_callback=storage.handle_event,
             )
 
             # Run aggregator timer

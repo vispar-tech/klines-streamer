@@ -51,6 +51,10 @@ STREAMER_KLINE_INTERVALS=1m,5m,1h
 STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true
 STREAMER_AGGREGATOR_WAITER_LATENCY_MS=80
 STREAMER_KLINES_MODE=false
+STREAMER_STORAGE_ENABLED=false
+STREAMER_STORAGE_BUFFER_FLUSH_SIZE=100
+STREAMER_STORAGE_BUFFER_FLUSH_INTERVAL=1.0
+STREAMER_REDIS_URL=redis://localhost:6379/0
 STREAMER_LOG_LEVEL=INFO
 ```
 
@@ -101,6 +105,12 @@ ConsumerManager.register_consumer("my", MyConsumer)
 ```
 
 Add `"my"` to `STREAMER_ENABLED_CONSUMERS` in `.env`.
+
+---
+
+## Storage
+
+When `STREAMER_STORAGE_ENABLED=true`, tickers data is stored in Redis as hashes: `bybit:tickers` (full snapshots) and `bybit:mark-price` (mark prices per symbol). Requires `STREAMER_REDIS_URL`.
 
 ---
 
