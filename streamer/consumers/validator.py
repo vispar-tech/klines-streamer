@@ -1,6 +1,7 @@
 """Validator consumer for comparing local klines to Bybit API in real-time."""
 
 import asyncio
+import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, DefaultDict, Dict, List, Optional, Sequence
 
@@ -8,9 +9,11 @@ import aiohttp
 
 from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
+from streamer.types import Channel, DataType, Interval
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+logger = logging.getLogger(__name__)
 
 BYBIT_KLINE_ENDPOINT = "https://api.bybit.com/v5/market/kline"
 CONCURRENCY = 5  # Number of parallel validation tasks per interval
@@ -47,37 +50,56 @@ class ValidatorConsumer(BaseConsumer):
             await self._session.close()
             self._session = None
 
-    async def consume(self, data: List[Dict[str, Any]]) -> None:
+    async def consume(
+        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+    ) -> None:
         """
         Validate klines by comparing each to Bybit's reference.
 
         data: list of dicts, each representing a candle.
         """
-        if not self._is_running or not data or settings.klines_mode:
+        if (
+            not self._is_running
+            or not data
+            or settings.klines_mode
+            or data_type != "klines"
+        ):
             return
 
         # Group by interval (milliseconds)
         grouped: DefaultDict[int, List[Dict[str, Any]]] = defaultdict(list)
         for item in data:
-            grouped[int(item["interval"])].append(item)
+            grouped[item["interval"]].append(item)
 
         tasks: List["asyncio.Future[Any]"] = []
-        for interval_ms, candles in grouped.items():
+        for interval, candles in grouped.items():
             # For each interval group, validate all candles concurrently (with limit)
+            parsed_interval = Interval(interval)
+            try:
+                parsed_interval.to_bybit()
+            except ValueError:
+                logger.info(
+                    f"Validator: Unsupported interval "
+                    f"'{parsed_interval}', skipping validation for this group."
+                )
+                continue
+
             tasks.append(
-                asyncio.create_task(self._validate_group(candles, interval_ms))
+                asyncio.create_task(
+                    self._validate_group(channel, candles, parsed_interval)
+                )
             )
 
         if tasks:
             await asyncio.gather(*tasks)
 
     async def _validate_group(
-        self, candles: List[Dict[str, Any]], interval_ms: int
+        self, channel: Channel, candles: List[Dict[str, Any]], interval: Interval
     ) -> None:
         sem = asyncio.Semaphore(CONCURRENCY)
         # Validate all candles, result is list of diffs
         validator_tasks = [
-            asyncio.create_task(self._validate_candle(item, interval_ms, sem))
+            asyncio.create_task(self._validate_candle(channel, item, interval, sem))
             for item in candles
         ]
         # Gather as they finish, log mismatches
@@ -87,7 +109,11 @@ class ValidatorConsumer(BaseConsumer):
                 self._report_diff(res)
 
     async def _validate_candle(
-        self, local: Dict[str, Any], interval_ms: int, sem: asyncio.Semaphore
+        self,
+        channel: Channel,
+        local: Dict[str, Any],
+        interval: Interval,
+        sem: asyncio.Semaphore,
     ) -> Optional[Dict[str, Any]]:
         """
         Fetch Bybit kline for this candle and compare.
@@ -100,9 +126,8 @@ class ValidatorConsumer(BaseConsumer):
                 return None
 
             symbol = local.get("symbol")
-            bybit_interval = str(round(interval_ms / 60_000))
             timestamp = local.get("timestamp")
-            if not (symbol and bybit_interval and timestamp):
+            if not (symbol and timestamp):
                 return None
             bybit_fields = [
                 "start",
@@ -115,7 +140,7 @@ class ValidatorConsumer(BaseConsumer):
                 "end",
             ]
             remote_klines = await self._fetch_bybit_kline(
-                session, symbol, bybit_interval, start=timestamp
+                channel, session, symbol, interval, start=timestamp
             )
             if (
                 not remote_klines
@@ -154,7 +179,7 @@ class ValidatorConsumer(BaseConsumer):
             if diffs:
                 return {
                     "symbol": symbol,
-                    "interval": interval_ms,
+                    "interval": interval.to_milliseconds(),
                     "timestamp": timestamp,
                     "diffs": diffs,
                     "local": {
@@ -175,17 +200,18 @@ class ValidatorConsumer(BaseConsumer):
 
     async def _fetch_bybit_kline(
         self,
+        channel: Channel,
         session: aiohttp.ClientSession,
         symbol: str,
-        interval: str,
+        interval: Interval,
         start: int,
         end: Optional[int] = None,
         limit: int = 1,
     ) -> Optional[Sequence[Any]]:
         query_params: Mapping[str, str] = {
-            "category": "linear",
+            "category": channel,
             "symbol": str(symbol),
-            "interval": str(interval),
+            "interval": interval.to_bybit(),
             "start": str(start),
             "limit": str(limit),
         }

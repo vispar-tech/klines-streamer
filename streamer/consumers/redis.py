@@ -8,6 +8,7 @@ from redis.asyncio import from_url as connection_from_url
 
 from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
+from streamer.types import Channel, DataType
 
 
 class RedisConsumer(BaseConsumer):
@@ -26,8 +27,10 @@ class RedisConsumer(BaseConsumer):
         """
         if not settings.redis_url:
             raise ValueError("REDIS_URL is required when Redis consumer is enabled")
-        if not settings.redis_channel:
-            raise ValueError("REDIS_CHANNEL is required when Redis consumer is enabled")
+        if not settings.redis_main_key:
+            raise ValueError(
+                "REDIS_MAIN_KEY is required when Redis consumer is enabled"
+            )
 
     async def setup(self) -> None:
         """Set up Redis connection and resources."""
@@ -51,7 +54,9 @@ class RedisConsumer(BaseConsumer):
         self.logger.info("Starting Redis consumer")
         self._is_running = True
 
-    async def consume(self, data: List[Dict[str, Any]]) -> None:
+    async def consume(
+        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+    ) -> None:
         """
         Consume kline data and publish to Redis.
 
@@ -63,17 +68,20 @@ class RedisConsumer(BaseConsumer):
 
         try:
             # Serialize data using orjson for better performance
-            message = orjson.dumps(data).decode("utf-8")
+            message = orjson.dumps(
+                {"channel": channel, "data_type": data_type, "data": data}
+            ).decode("utf-8")
 
-            # Publish all kline data to the single configured channel
-            if not settings.redis_channel:
-                self.logger.error("Redis channel is not configured")
+            # Publish all kline data to the single configured main key
+            if not settings.redis_main_key:
+                self.logger.error("Redis main key is not configured")
                 return
 
-            await self.redis.publish(settings.redis_channel, message)
+            await self.redis.publish(settings.redis_main_key, message)
 
             self.logger.debug(
-                f"Published kline data to Redis channel: {settings.redis_channel}"
+                "Published kline data to Redis main key: "
+                f"{settings.redis_main_key}, channel: {channel}"
             )
 
         except Exception as e:

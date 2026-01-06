@@ -1,10 +1,9 @@
 """Console consumer for printing kline data to the console."""
 
-from datetime import datetime
 from typing import Any, Dict, List
 
 from streamer.consumers.base import BaseConsumer
-from streamer.types import Interval
+from streamer.types import Channel, DataType
 
 
 class ConsoleConsumer(BaseConsumer):
@@ -44,47 +43,47 @@ class ConsoleConsumer(BaseConsumer):
         self.logger.info("Starting console consumer")
         self._is_running = True
 
-    async def consume(self, data: List[Dict[str, Any]]) -> None:
+    async def consume(
+        self,
+        channel: Channel,
+        data_type: DataType,
+        data: List[Dict[str, Any]],
+    ) -> None:
         """
-        Print kline data to console, converting timestamp to readable time.
+        Consume and print streaming data to the console.
 
         Args:
-            data: Kline data dictionary containing symbol, interval, and kline data.
+            channel: The data stream channel ("linear", "spot", etc.).
+            data_type: The type of data being consumed
+                ("klines", "ticker", "price", "trades").
+            data: A list of dictionaries with payload data.
         """
-        if not self._is_running:
+        if not self._is_running or not data:
             return
 
-        if not data:
-            return
-        log_lines: list[str] = []
         for item in data:
             symbol = item.get("symbol", "unknown")
-            interval_ms = item.get("interval", "unknown")
-            interval = Interval(interval_ms)
-            # Extract timestamp in ms and convert to readable string
-            timestamp_ms = item.get("timestamp")
-            if timestamp_ms is not None:
-                # Convert ms to seconds and then format time
-                ts_readable = datetime.fromtimestamp(timestamp_ms / 1000).strftime(
-                    "%Y-%m-%d %H:%M:%S"
+            if data_type == "klines":
+                interval = item.get("interval", "unknown")
+                ts = item.get("timestamp", "unknown")
+                close = item.get("close", "")
+                # Print summary of kline (candlestick) close value
+                self.logger.info(
+                    f"[{channel.upper()}] [{symbol}] [{interval}] {ts} close={close}"
                 )
-                info_items: list[str] = []
-                for k, v in item.items():
-                    if k == "timestamp":
-                        info_items.append(f"timestamp={timestamp_ms} ({ts_readable})")
-                    elif k not in {"symbol", "interval"}:
-                        info_items.append(f"{k}={v!r}")
-                info_str = " ".join(info_items)
-            else:
-                info_str = " ".join(
-                    f"{k}={v!r}"
-                    for k, v in item.items()
-                    if k not in {"symbol", "interval"}
+            elif data_type == "ticker":
+                # Print full ticker snapshot
+                self.logger.info(f"[{channel.upper()}] [TICKER] [{symbol}] {item}")
+            elif data_type == "price":
+                price = item.get("price", "unknown")
+                # Print price update
+                self.logger.info(
+                    f"[{channel.upper()}] [PRICE] [{symbol}] price={price}"
                 )
-
-            log_lines.append(f"[{symbol}] [{interval}] {info_str}")
-
-        self.logger.info("\n".join(log_lines))
+            elif data_type in {"trades", "trade"}:
+                symbol = item.get("s", "unknown")
+                trade_repr = " ".join(f"{k}={v}" for k, v in item.items())
+                self.logger.info(f"[{channel.upper()}] [TRADE] [{symbol}] {trade_repr}")
 
     async def stop(self) -> None:
         """

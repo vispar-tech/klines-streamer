@@ -10,3 +10,9 @@ services:
       - ./logs:/usr/src/logs
     env_file:
       - .env
+    networks:
+      - shared
+
+networks:
+  shared:
+    external: true

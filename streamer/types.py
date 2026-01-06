@@ -1,7 +1,10 @@
 """Type definitions and utilities for the streamer package."""
 
 import re
-from typing import Any, ClassVar, Dict, Self, Union
+from typing import Any, ClassVar, Dict, Literal, Self, Union
+
+Channel = Literal["linear", "spot"]
+DataType = Literal["klines", "trades", "ticker", "price"]
 
 
 class Interval:
@@ -125,33 +128,23 @@ class Interval:
         return {cls(x) for x in cls._KLINES_MODE_AVAILABLE_INTERVALS}
 
     def to_bybit(self) -> str:
-        """
-        Convert this interval to Bybit's REST/WebSocket convention for intervals.
+        """Convert to Bybit interval string, or raise ValueError if unsupported."""
+        ms = self.to_milliseconds()
+        # Minutes intervals supported by Bybit
+        minutes_set = {1, 3, 5, 15, 30, 60, 120, 240, 360, 720}
+        minute_ms_map = {val: val * 60_000 for val in minutes_set}
 
-        Minutes: '1', '3', '5', '15', '30', '60', '120', '240', '360', '720'
-        Day: 'D'
-        Week: 'W'
-        Month: 'M'
-
-        Returns:
-            str: Bybit interval string.
-
-        Raises:
-            ValueError: If the interval cannot be represented in Bybit format.
-        """
-        self.to_milliseconds()
-        # Minutes intervals
-        minutes_map = {1, 3, 5, 15, 30, 60, 120, 240, 360, 720}
-        if self.unit == "m" and self.value in minutes_map:
-            return str(self.value)
+        for minute, minute_ms in minute_ms_map.items():
+            if ms == minute_ms:
+                return str(minute)
         # Day
-        if self.unit == "d" and self.value == 1:
+        if ms == 86_400_000:
             return "D"
         # Week
-        if self.unit == "w" and self.value == 1:
+        if ms == 604_800_000:
             return "W"
-        # Month
-        if self.unit == "M" and self.value == 1:
+        # Month, treated as exactly 30 days
+        if ms == 2_592_000_000:
             return "M"
         raise ValueError(f"Interval '{self!s}' cannot be represented in Bybit format")
 
@@ -168,8 +161,33 @@ class Interval:
         return self.to_milliseconds() // (60 * 1000)
 
     def __str__(self) -> str:
-        """Representation of the interval."""
-        return self.raw
+        """
+        Human-friendly representation of the interval.
+
+        - < 1 sec: ms
+        - >=1s and <1m: s
+        - >=1m and <1h: m
+        - >=1h and <1d: h
+        - >=1d and <1w: d
+        - >=1w and <1M: w
+        - >=1M: M.
+        """
+        ms = self.to_milliseconds()
+        if ms < 1000:
+            suffix, value = "ms", ms
+        elif ms < 60_000:
+            suffix, value = "s", ms // 1000
+        elif ms < 3_600_000:
+            suffix, value = "m", ms // 60_000
+        elif ms < 86_400_000:
+            suffix, value = "h", ms // 3_600_000
+        elif ms < 604_800_000:
+            suffix, value = "d", ms // 86_400_000
+        elif ms < 2_592_000_000:
+            suffix, value = "w", ms // 604_800_000
+        else:
+            suffix, value = "M", ms // 2_592_000_000
+        return f"{value}{suffix}"
 
     def __eq__(self, other: object) -> bool:
         """Check equality based on milliseconds."""
@@ -186,5 +204,8 @@ class Interval:
         return self.to_milliseconds() < other.to_milliseconds()
 
     def __repr__(self) -> str:
-        """Developer representation."""
-        return self.raw
+        """Unambiguous developer representation."""
+        return (
+            f"Interval(raw={self.raw!r}, value={self.value}, "
+            f"unit={self.unit!r}, str={self!s})"
+        )

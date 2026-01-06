@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, List, Sequence
 
 from streamer.consumers.base import BaseConsumer
+from streamer.types import Channel, DataType
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +22,20 @@ class Broadcaster:
         """Initialize with a list of consumers."""
         self._consumers = consumers
 
-    async def handle(self, data: List[Dict[str, Any]]) -> None:
+    async def consume(
+        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+    ) -> None:
         """Send data to all consumers (in parallel), logging errors individually."""
-        logger.info(
-            f"Broadcasting {len(data)} items to {len(self._consumers)} consumers"
-        )
-        results = await asyncio.gather(
-            *(consumer.consume(data) for consumer in self._consumers),
-            return_exceptions=True,
-        )
+        if data_type == "klines":
+            # Log only for closed klines, to avoid spam
+            logger.info(
+                f"Broadcasting {len(data)} items to "
+                f"{len(self._consumers)} consumers in channel {channel}:{data_type}"
+            )
+        tasks = [
+            consumer.consume(channel, data_type, data) for consumer in self._consumers
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         for consumer, result in zip(self._consumers, results, strict=False):
             if isinstance(result, Exception):
                 consumer.logger.error(f"Consumer '{consumer.name}' failed: {result}")

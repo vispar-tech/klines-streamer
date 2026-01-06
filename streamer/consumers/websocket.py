@@ -10,6 +10,7 @@ from websockets.exceptions import ConnectionClosed
 
 from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
+from streamer.types import Channel, DataType
 
 
 class WebSocketConnectionManager:
@@ -232,7 +233,9 @@ class WebSocketConsumer(BaseConsumer):
             self.logger.error(f"Failed to start WebSocket server: {e}")
             raise
 
-    async def consume(self, data: List[Dict[str, Any]]) -> None:
+    async def consume(
+        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+    ) -> None:
         """
         Consume kline data and broadcast to WebSocket clients.
 
@@ -243,7 +246,9 @@ class WebSocketConsumer(BaseConsumer):
             return
 
         try:
-            message = orjson.dumps(data).decode("utf-8")
+            message = orjson.dumps(
+                {"channel": channel, "data_type": data_type, "data": data}
+            ).decode("utf-8")
             await self.connection_manager.broadcast(message)
 
             c = self.connection_manager.count()

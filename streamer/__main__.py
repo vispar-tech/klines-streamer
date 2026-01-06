@@ -9,7 +9,7 @@ from streamer.aggregator import Aggregator
 from streamer.broadcaster import Broadcaster
 from streamer.consumers import BaseConsumer, ConsumerManager
 from streamer.settings import settings
-from streamer.storage import TickersStorage
+from streamer.storage import Storage
 from streamer.utils import setup_logging, validate_settings_symbols
 from streamer.websocket import WebSocketClient
 
@@ -43,26 +43,51 @@ async def main_async() -> None:
             # Start consumers
             await ConsumerManager.start_consumers(consumers)
 
+            # Create main storage processor that will storage all data from websocket
+            storage = Storage()
+            await storage.setup()
+
             # Setup broadcaster
             broadcaster = Broadcaster(consumers)
 
             # Create aggregator that will send completed klines to broadcaster
-            aggregator = Aggregator(broadcaster)
-
-            # Create main storage processor that will storage all data from websocket
-            storage = TickersStorage()
+            # We need separate aggregators to avoid bottleneck
+            aggregator = Aggregator(broadcaster, storage, channel="linear")
 
             # Create WebSocket client with pool support and connect to aggregator
             websocket_client = WebSocketClient(
+                channel="linear",
                 on_trade=aggregator.handle_trade,
                 on_kline=aggregator.handle_kline,
-                ticker_storage_callback=storage.handle_event,
+                on_ticker=aggregator.handle_ticker,
             )
 
-            # Run aggregator timer
-            await aggregator.start()
+            if settings.enable_spot_stream:
+                # The same for spot data
+                spot_aggregator = Aggregator(broadcaster, storage, channel="spot")
 
-            await websocket_client.start()
+                spot_websocket_client = WebSocketClient(
+                    channel="spot",
+                    on_trade=spot_aggregator.handle_trade,
+                    on_kline=spot_aggregator.handle_kline,
+                    on_ticker=spot_aggregator.handle_ticker,
+                )
+
+                # Run aggregator timer
+                await asyncio.gather(
+                    aggregator.start(),
+                    spot_aggregator.start(),
+                )
+
+                await asyncio.gather(
+                    websocket_client.start(),
+                    spot_websocket_client.start(),
+                )
+            else:
+                # Only run linear (no spot)
+                await aggregator.start()
+                await websocket_client.start()
+
         else:
             logger.warning("No consumers to run, exiting...")
 
