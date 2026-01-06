@@ -1,13 +1,16 @@
-"""Aggregator timer + OHLC builder (ultra-fast)."""
+"""Ultra-fast OHLC aggregator; timer and builder."""
 
 import asyncio
 import contextlib
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, cast
 
 from streamer.broadcaster import Broadcaster
 from streamer.settings import settings
+from streamer.storage import Storage
+from streamer.types import Channel
+from streamer.utils.parse import parse_numbers
 
 if TYPE_CHECKING:
     from streamer.types import Interval
@@ -16,10 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 class Aggregator:
-    """Extremely fast OHLC aggregator synchronized to interval boundaries."""
+    """OHLC aggregator with interval synchronization."""
 
     __slots__ = (
         "_broadcaster",
+        "_channel",
         "_interval_ms_map",
         "_interval_str_ms_map",
         "_intervals_sorted",
@@ -28,6 +32,8 @@ class Aggregator:
         "_klines_total_symbols_count",
         "_min_interval_ms",
         "_running",
+        "_storage",
+        "_tickers_snapshots",
         "_timer_task",
         "_timer_ticks_count",
         "_trades_buckets",
@@ -37,10 +43,14 @@ class Aggregator:
         "_trades_waiter_mode_enabled",
     )
 
-    def __init__(self, broadcaster: Broadcaster) -> None:
-        """Initialize the Aggregator with the provided broadcaster."""
+    def __init__(
+        self, broadcaster: Broadcaster, storage: Storage, channel: Channel
+    ) -> None:
+        """Init Aggregator instance."""
         self._broadcaster = broadcaster
+        self._storage = storage
         self._running = False
+        self._channel: Channel = channel
 
         intervals = settings.kline_intervals
         self._interval_ms_map: Dict["Interval", int] = {
@@ -74,26 +84,33 @@ class Aggregator:
 
         self._klines_total_symbols_count = len(settings.bybit_symbols)
 
+        ### TICKERS
+        # local cache: symbol -> last snapshot dict
+        self._tickers_snapshots: dict[str, dict[str, Any]] = {}
+
         ### TIMER
         self._timer_task: asyncio.Task[None] | None = None
         self._timer_ticks_count = 0
         if logger.isEnabledFor(logging.INFO):
             if settings.klines_mode:
                 logger.info(
-                    "Aggregator initialized with intervals: %s, mode: klines",
+                    "Aggregator initialized on channel: %s, intervals: %s, "
+                    "mode: klines",
+                    self._channel,
                     ",".join(str(i) for i in sorted(intervals)),
                 )
             else:
                 logger.info(
-                    "Aggregator initialized with intervals: %s, mode: trades, "
-                    "waiter_mode: %s, waiter_latency: %sms",
+                    "Aggregator initialized on channel: %s, intervals: %s, "
+                    "mode: trades, waiter_mode: %s, waiter_latency: %sms",
+                    self._channel,
                     ", ".join(str(i) for i in sorted(intervals)),
                     self._trades_waiter_mode_enabled,
                     self._trades_waiter_latency_ms,
                 )
 
     async def handle_trade(self, message: Dict[str, Any]) -> None:
-        """Process a new trade message to update OHLC buckets."""
+        """Handle trade event and update OHLC buckets."""
         data = message["data"]
 
         symbol_buckets_cache: dict[str, dict[int, dict[str, Any]]] = {}
@@ -150,8 +167,11 @@ class Aggregator:
                     bucket["v"] += volume
                     bucket["n"] += 1
 
+        if settings.enable_trades_stream:
+            await self._broadcaster.consume(self._channel, "trades", data)
+
     async def handle_kline(self, message: Dict[str, Any]) -> None:
-        """Process a new kline message to update collected klines in the store."""
+        """Handle incoming kline and update store."""
         topic = message["topic"]
         colon_idx = topic.find(".")
         if colon_idx < 0:
@@ -190,16 +210,54 @@ class Aggregator:
                 continue
             symbol_store[interval_ms] = kline
 
+    async def handle_ticker(self, message: Dict[str, Any]) -> None:
+        """Handle ticker event and update snapshot."""
+        topic = message["topic"]
+        if not (isinstance(topic, str) and topic.startswith("tickers.")):
+            return
+
+        try:
+            symbol = topic.split(".", 1)[1]
+        except Exception:
+            symbol = "unknown"
+
+        typ = message["type"]
+        tickers_data = cast("dict[str, Any]", message.get("data"))
+        if not tickers_data:
+            logger.warning(f"No 'data' field in tickers event: {message}")
+            return
+
+        snapshot = parse_numbers(
+            self._process_ticker_snapshot(symbol, typ, tickers_data)
+        )
+        # Determine price (for broadcasting as well)
+        price = (
+            snapshot["markPrice"]
+            if self._channel == "linear"
+            else snapshot["lastPrice"]
+        )
+
+        # Broadcast snapshot via broadcaster
+        if settings.enable_ticker_stream:
+            await self._broadcaster.consume(self._channel, "ticker", [snapshot])
+
+        if settings.enable_price_stream:
+            await self._broadcaster.consume(
+                self._channel, "price", [{"symbol": symbol, "price": price}]
+            )
+
+        await self._storage.process_ticker(self._channel, symbol, snapshot, price)
+
     async def start(self) -> None:
-        """Start the aggregator's timer loop."""
+        """Start aggregator timer loop."""
         if self._running:
             return
         self._running = True
         self._timer_task = asyncio.create_task(self._timer_loop())
-        logger.info("Aggregator started")
+        logger.info(f"Aggregator started for channel: {self._channel}")
 
     async def stop(self) -> None:
-        """Stop the aggregator's timer loop and cleanup."""
+        """Stop aggregator timer and cleanup."""
         if not self._running:
             return
         self._running = False
@@ -207,9 +265,28 @@ class Aggregator:
             self._timer_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._timer_task
-        logger.info("Aggregator stopped")
+        logger.info(f"Aggregator stopped for channel: {self._channel}")
+
+    def _process_ticker_snapshot(
+        self, symbol: str, typ: str, tickers_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Update in-memory ticker cache and return snapshot."""
+        cache = self._tickers_snapshots
+        cache_key = symbol
+        if typ == "snapshot":
+            cache[cache_key] = tickers_data
+            return tickers_data
+        if typ == "delta":
+            item = cache.get(cache_key)
+            if item is not None:
+                item.update(tickers_data)
+                return item
+            cache[cache_key] = tickers_data
+            return tickers_data
+        return tickers_data
 
     async def _timer_loop(self) -> None:
+        """Run timer loop to synchronize boundaries for the aggregator."""
         min_interval = self._min_interval_ms
         try:
             while self._running:
@@ -233,6 +310,7 @@ class Aggregator:
             raise
 
     async def _close_klines(self, boundary_ms: int) -> None:
+        """Close OHLC buckets and publish ready klines."""
         out: list[dict[str, Any]] = []
 
         for symbol, intervals in self._trades_buckets.items():
@@ -297,11 +375,15 @@ class Aggregator:
                 )
 
         if out:
-            logger.debug(f"Closing {len(out)} klines at boundary {boundary_ms}")
-            await self._broadcaster.handle(out)
+            logger.debug(
+                f"Closing {len(out)} klines at boundary "
+                f"{boundary_ms} in channel {self._channel} "
+            )
+            await self._broadcaster.consume(self._channel, "klines", out)
+            await self._storage.process_klines(self._channel, out)
 
     async def _wait_klines(self, boundary_ms: int) -> None:
-        """Wait for closed klines per interval and collect them."""
+        """Wait for all closed klines, then publish."""
         out: list[dict[str, Any]] = []
 
         for interval_ms in self._intervals_sorted:
@@ -329,5 +411,9 @@ class Aggregator:
                 out.extend(closed_klines)
 
         if out:
-            logger.debug(f"Collect {len(out)} closed klines at boundary {boundary_ms}")
-            await self._broadcaster.handle(out)
+            logger.debug(
+                f"Collect {len(out)} closed klines at boundary "
+                f"{boundary_ms} in channel {self._channel} "
+            )
+            await self._broadcaster.consume(self._channel, "klines", out)
+            await self._storage.process_klines(self._channel, out)

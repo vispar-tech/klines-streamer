@@ -10,6 +10,7 @@ from websockets.asyncio.client import ClientConnection
 from websockets.exceptions import ConnectionClosed
 
 from streamer.settings import settings
+from streamer.types import Channel
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,10 @@ class WebSocketClient:
 
     def __init__(
         self,
-        on_trade: Callable[[Any], Coroutine[Any, Any, None]],
-        on_kline: Callable[[Any], Coroutine[Any, Any, None]],
-        ticker_storage_callback: Callable[[Any], Coroutine[Any, Any, None]],
-        url: str = "wss://stream.bybit.com/v5/public/linear",
+        channel: Channel,
+        on_trade: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
+        on_kline: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
+        on_ticker: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
     ) -> None:
         """Initialize WebSocket client with pool support.
 
@@ -35,19 +36,28 @@ class WebSocketClient:
         self.symbols = settings.bybit_symbols
         self.on_trade = on_trade
         self.on_kline = on_kline
-        self.ticker_storage_callback = ticker_storage_callback
-        self.url = url
+        self.on_ticker = on_ticker
+
+        self.url = f"wss://stream.bybit.com/v5/public/{channel}"
         self.pool_size = settings.bybit_socket_pool_size
+
+        self.channel = channel  # store channel for logs
+
+        self.topic: str | None = None
+        self.ticker_topic: str | None = None
 
         if settings.klines_mode:
             self.topic_part = "kline."
-            self.topic = "kline.{interval}.{symbol}"
+            if settings.enable_klines_stream:
+                self.topic = "kline.{interval}.{symbol}"
         else:
             self.topic_part = "publicTrade."
-            self.topic = "publicTrade.{symbol}"
+            if settings.enable_klines_stream or settings.enable_trades_stream:
+                self.topic = "publicTrade.{symbol}"
 
         self.ticker_topic_part = "tickers."
-        self.ticker_topic = "tickers.{symbol}"
+        if settings.enable_ticker_stream or settings.enable_price_stream:
+            self.ticker_topic = "tickers.{symbol}"
 
         # Pool management
         self._running = False
@@ -57,10 +67,13 @@ class WebSocketClient:
     async def start(self) -> None:
         """Start the socket pool processor."""
         if self._running:
-            logger.warning("WebSocketClient already running")
+            logger.warning(f"WebSocketClient already running on channel {self.channel}")
             return
 
-        logger.info(f"Starting WebSocketClient with pool size {self.pool_size}")
+        logger.info(
+            f"Starting WebSocketClient with pool size {self.pool_size} "
+            f"on channel {self.channel}"
+        )
 
         # Distribute symbols across sockets
         distributed_symbols = self._distribute_symbols(self.symbols)
@@ -70,10 +83,13 @@ class WebSocketClient:
         for i, socket_symbols in enumerate(distributed_symbols):
             logger.info(
                 f"Creating socket {i + 1}/{self.pool_size} "
-                f"with {len(socket_symbols)} symbols"
+                f"with {len(socket_symbols)} symbols on channel {self.channel}"
             )
             if len(socket_symbols) == 0:
-                logger.warning(f"No symbols for socket {i + 1}/{self.pool_size}")
+                logger.warning(
+                    f"No symbols for socket {i + 1}/{self.pool_size} "
+                    f"on channel {self.channel}"
+                )
                 continue
 
             # Start socket as background task
@@ -84,11 +100,14 @@ class WebSocketClient:
         # Wait for all sockets to initialize
         await asyncio.gather(*socket_tasks, return_exceptions=True)
 
-        logger.info(f"WebSocketClient started with {len(self._sockets)} sockets")
+        logger.info(
+            f"WebSocketClient started with {len(self._sockets)} sockets "
+            f"on channel {self.channel}"
+        )
 
     async def stop(self) -> None:
         """Stop all WebSocket connections."""
-        logger.info("Stopping WebSocketClient...")
+        logger.info(f"Stopping WebSocketClient on channel {self.channel}...")
         self._running = False
 
         # Cancel all socket tasks
@@ -106,7 +125,7 @@ class WebSocketClient:
         self._sockets.clear()
         self._socket_tasks.clear()
 
-        logger.info("WebSocketClient stopped")
+        logger.info(f"WebSocketClient stopped on channel {self.channel}")
 
     def _distribute_symbols(self, symbols: set[str]) -> List[set[str]]:
         """Distribute symbols across socket pool."""
@@ -124,10 +143,15 @@ class WebSocketClient:
         """Run a single WebSocket connection."""
         while self._running:
             try:
-                logger.info(f"Socket {socket_id}: Connecting to {self.url}")
+                logger.info(
+                    f"Connecting to {self.url} on channel {self.channel} "
+                    f"(socket {socket_id})"
+                )
                 async with websockets.connect(self.url) as websocket:
                     self._sockets[socket_id] = websocket
-                    logger.info(f"Socket {socket_id}: Connected")
+                    logger.info(
+                        f"Connected on channel {self.channel} (socket {socket_id})"
+                    )
 
                     # Subscribe to assigned symbols
                     await self._subscribe(websocket, symbols)
@@ -147,35 +171,41 @@ class WebSocketClient:
 
             except ConnectionClosed:
                 if self._running:
-                    logger.warning(f"Socket {socket_id}: Reconnecting in 5s...")
+                    logger.warning(
+                        f"Reconnecting in 5s on channel {self.channel} "
+                        f"(socket {socket_id})..."
+                    )
                     await asyncio.sleep(5)
             except Exception as e:
                 if self._running:
                     logger.error(
-                        f"Socket {socket_id}: Error {e}, reconnecting in 5 seconds..."
+                        f"Error on channel {self.channel} (socket {socket_id}): "
+                        f"{e}, reconnecting in 5 seconds..."
                     )
                     await asyncio.sleep(5)
 
-        logger.info(f"Socket {socket_id}: Stopped")
+        logger.info(f"Socket {socket_id} stopped on channel {self.channel}")
 
     async def _subscribe(self, websocket: ClientConnection, symbols: Set[str]) -> None:
         """Subscribe to streams for assigned symbols (including tickers)."""
         args: list[str] = []
         # Add main stream topics (kline or trades)
-        if settings.klines_mode:
+        if settings.klines_mode and self.topic:
             args += [
                 self.topic.format(symbol=symbol, interval=interval.to_bybit())
                 for interval in settings.kline_intervals
                 for symbol in symbols
             ]
-        else:
+        elif self.topic:
             args += [self.topic.format(symbol=symbol) for symbol in symbols]
         # Always add tickers.{symbol} for each symbol
-        args += [self.ticker_topic.format(symbol=symbol) for symbol in symbols]
+        if self.ticker_topic:
+            args += [self.ticker_topic.format(symbol=symbol) for symbol in symbols]
+
         subscription_msg = {"op": "subscribe", "args": args}
 
         await websocket.send(orjson.dumps(subscription_msg).decode("utf-8"))
-        logger.info(f"Subscribed to streams: {args}")
+        logger.info(f"Subscribed to streams: {args} on channel {self.channel}")
 
     async def _ping_loop(self, socket_id: int, websocket: ClientConnection) -> None:
         """Send periodic ping messages."""
@@ -185,7 +215,9 @@ class WebSocketClient:
                 await websocket.send(orjson.dumps(ping_msg).decode("utf-8"))
                 await asyncio.sleep(30)
             except Exception as e:
-                logger.error(f"Socket {socket_id}: Ping error: {e}")
+                logger.error(
+                    f"Ping error on channel {self.channel} (socket {socket_id}): {e}"
+                )
                 break
 
     async def _handle_message(self, message: str | bytes) -> None:
@@ -200,7 +232,9 @@ class WebSocketClient:
             if data.get("op") == "ping" and data.get("ret_msg") == "pong":
                 return
             if data.get("op") == "subscribe":
-                logger.debug(f"Subscription confirmed: {data}")
+                logger.debug(
+                    f"Subscription confirmed on channel {self.channel}: {data}"
+                )
                 return
 
             topic = data.get("topic", "")
@@ -213,7 +247,7 @@ class WebSocketClient:
                 return
 
             if topic.startswith(self.ticker_topic_part):
-                await self.ticker_storage_callback(data)
+                await self.on_ticker(data)
                 return
 
             if settings.klines_mode:
@@ -223,4 +257,7 @@ class WebSocketClient:
                 await self.on_trade(data)
 
         except orjson.JSONDecodeError as e:
-            logger.error(f"Failed to parse message: {e}, message: {message!s}")
+            logger.error(
+                f"Failed to parse message on channel {self.channel}: {e}, "
+                f"message: {message!s}"
+            )

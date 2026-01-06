@@ -4,6 +4,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
+from streamer.types import Channel, DataType
+
 
 class BaseConsumer(ABC):
     """Abstract base class for all consumers."""
@@ -42,12 +44,16 @@ class BaseConsumer(ABC):
         ...
 
     @abstractmethod
-    async def consume(self, data: List[Dict[str, Any]]) -> None:
+    async def consume(
+        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+    ) -> None:
         """
-        Consume and process kline data.
+        Consume and process data of given type.
 
         Args:
-            data: Kline data dictionary containing symbol, interval, and kline data
+            channel: The channel name or identifier for the data stream.
+            data_type: The type of the data, e.g., "klines", "ticker", "price".
+            data: Data dictionary containing symbol, interval, and data details.
         """
         ...
 

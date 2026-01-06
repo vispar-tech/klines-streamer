@@ -18,16 +18,23 @@ class Settings(BaseSettings):
     bybit_socket_pool_size: int = 50
     kline_intervals: Annotated[Set[Interval], NoDecode] = set()
 
+    # Streaming configuration
+    enable_klines_stream: bool = True
+    enable_price_stream: bool = False
+    enable_ticker_stream: bool = False
+    enable_trades_stream: bool = False
+    enable_spot_stream: bool = False
+
     # Redis configuration
     # (optional - only required when Redis consumer is enabled)
     redis_url: str | None = None
-    redis_channel: str | None = None
+    redis_main_key: str | None = None
 
     # WebSocket server configuration
     # (optional - only required when WebSocket consumer is enabled)
     websocket_host: str | None = None
     websocket_port: int | None = None
-    websocket_url: str | None = None
+    websocket_path: str = "/"
 
     # WebSocket authentication
     # (optional - only required when WebSocket consumer is enabled)
@@ -35,7 +42,7 @@ class Settings(BaseSettings):
     wss_auth_user: str | None = None
 
     # Consumer configuration
-    enabled_consumers: Annotated[Set[str], NoDecode] = {"console"}
+    enabled_consumers: Annotated[Set[str], NoDecode] = {"console", "redis", "websocket"}
 
     # Aggregator configuration
     aggregator_waiter_mode_enabled: bool = True
@@ -109,12 +116,27 @@ class Settings(BaseSettings):
                     "aggregator_waiter_mode_enabled cannot be True in klines mode; "
                     "set to False."
                 )
+
+        # Ensure at least one of the streaming options is enabled
+        if not (
+            self.enable_klines_stream
+            or self.enable_price_stream
+            or self.enable_ticker_stream
+            or self.enable_trades_stream
+        ):
+            raise ValueError(
+                "At least one of 'enable_klines_stream', "
+                "'enable_price_stream', 'enable_ticker_stream', "
+                "or 'enable_trades_stream' must be enabled."
+            )
+
         return self
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         env_prefix="STREAMER_",
+        extra="forbid",
     )
 
 
