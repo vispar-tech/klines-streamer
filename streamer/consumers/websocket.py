@@ -95,9 +95,9 @@ class WebSocketConsumer(BaseConsumer):
             raise ValueError(
                 "WEBSOCKET_PORT is required when WebSocket consumer is enabled"
             )
-        if not settings.websocket_url:
+        if not settings.websocket_path:
             raise ValueError(
-                "WEBSOCKET_URL is required when WebSocket consumer is enabled"
+                "WEBSOCKET_PATH is required when WebSocket consumer is enabled"
             )
         if not settings.wss_auth_key:
             raise ValueError(
@@ -156,12 +156,27 @@ class WebSocketConsumer(BaseConsumer):
         """
         Handle a single WebSocket client connection.
 
-        Handles authentication and ping/pong messages.
+        Handles authentication, websocket path check, and ping/pong messages.
         Args:
             ws: The ServerConnection representing the client connection.
         """
         client_address = ws.remote_address
         self.logger.info(f"New client connection: {client_address}")
+
+        # Check if websocket_path is set and matches the requested path, else close
+        expected_path = settings.websocket_path
+        if not ws.request:
+            raise Exception(
+                "Missing websocket request info for client; cannot check path"
+            )
+        request_path = ws.request.path
+        if expected_path and request_path != expected_path:
+            self.logger.warning(
+                f"Rejected connection from {client_address}: "
+                f"invalid websocket path '{request_path}' (expected '{expected_path}')"
+            )
+            await ws.close(code=4404, reason="Invalid websocket path")
+            return
 
         try:
             if not await self.authenticate(ws):

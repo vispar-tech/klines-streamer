@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # (optional - only required when WebSocket consumer is enabled)
     websocket_host: str | None = None
     websocket_port: int | None = None
-    websocket_url: str | None = None
+    websocket_path: str = "/"
 
     # WebSocket authentication
     # (optional - only required when WebSocket consumer is enabled)
