@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+KLINE_MAX_WAIT_TIME = 20.0
+KLINE_SLEEP_TIME = 0.01
+
 
 class Aggregator:
     """OHLC aggregator with interval synchronization."""
@@ -63,14 +66,15 @@ class Aggregator:
         self._min_interval_ms = self._intervals_sorted[0]
 
         ### TRADES MODE VARS
-        # symbol -> interval_ms -> bucket
-        self._trades_buckets: Dict[str, Dict[int, Dict[str, Any]]] = {}
-
-        # symbol -> interval_ms -> last_close
-        self._trades_last_close: Dict[str, Dict[int, float]] = {}
+        # symbol -> interval_ms -> bucket_end -> bucket
+        # TODO: very deep struct, need to refactor
+        self._trades_buckets: Dict[str, Dict[int, Dict[int, Dict[str, Any]]]] = {}
 
         # symbol -> interval_ms -> bool (first kline skipped)
         self._trades_first_kline_skipped: Dict[str, Dict[int, bool]] = {}
+
+        # symbol -> interval_ms -> last close price
+        self._trades_last_close: Dict[str, Dict[int, Any]] = {}
 
         # Configuration
         self._trades_waiter_mode_enabled = settings.aggregator_waiter_mode_enabled
@@ -110,62 +114,49 @@ class Aggregator:
                 )
 
     async def handle_trade(self, message: Dict[str, Any]) -> None:
-        """Handle trade event and update OHLC buckets."""
+        """Handle trade event and update OHLC buckets per bucket_start."""
         data = message["data"]
 
-        symbol_buckets_cache: dict[str, dict[int, dict[str, Any]]] = {}
-        last_close_cache: dict[str, dict[int, float]] = {}
-
-        for trade in data:
+        for trade in sorted(data, key=lambda x: x["T"], reverse=False):
             ts: int = trade["T"]
             symbol: str = trade["s"]
             price: float = float(trade["p"])
             volume: float = float(trade["v"])
 
-            # кешируем dict для быстрого доступа на все интервалы
-            symbol_buckets = symbol_buckets_cache.setdefault(
-                symbol, self._trades_buckets.setdefault(symbol, {})
-            )
-            symbol_last_close = last_close_cache.setdefault(
-                symbol, self._trades_last_close.setdefault(symbol, {})
-            )
-
             for interval_ms in self._intervals_sorted:
                 bucket_start = (ts // interval_ms) * interval_ms
                 bucket_end = bucket_start + interval_ms
 
-                bucket = symbol_buckets.get(interval_ms)
+                interval_buckets = self._trades_buckets.setdefault(
+                    symbol, {}
+                ).setdefault(interval_ms, {})
+                bucket = interval_buckets.get(bucket_start)
 
-                # NOTE: This code need to recalc close by delayed data
-                if (
-                    bucket is None
-                    and bucket_start
-                    < int(time.time() * 1000) // interval_ms * interval_ms
-                ):
-                    symbol_last_close.get(interval_ms, price)
-                    symbol_last_close[interval_ms] = price
-                    continue
+                if bucket is None:
+                    trades_last_close_for_symbol = self._trades_last_close.get(
+                        symbol, {}
+                    )
+                    last_close = trades_last_close_for_symbol.get(interval_ms)
+                    bucket_open = last_close if last_close is not None else price
 
-                if bucket is None or bucket["end"] != bucket_end:
-                    # открываем новую свечу
-                    last_close = symbol_last_close.get(interval_ms)
-                    o = price if last_close is None else last_close
-                    symbol_buckets[interval_ms] = {
+                    bucket = {
                         "start": bucket_start,
                         "end": bucket_end,
-                        "o": o,
+                        "o": bucket_open,
+                        "c": price,
                         "h": price,
                         "l": price,
-                        "c": price,
                         "v": volume,
                         "n": 1,
                     }
+                    interval_buckets[bucket_start] = bucket
+
                 else:
                     bucket["h"] = max(bucket["h"], price)
                     bucket["l"] = min(bucket["l"], price)
-                    bucket["c"] = price
                     bucket["v"] += volume
                     bucket["n"] += 1
+                    bucket["c"] = price
 
         if settings.enable_trades_stream:
             await self._broadcaster.consume(self._channel, "trades", data)
@@ -194,7 +185,6 @@ class Aggregator:
             symbol_store = {}
             self._klines_store[symbol] = symbol_store
 
-        # last_closed_store now structured as Dict[int, Dict[int, List[Dict[str, Any]]]]
         last_closed_all = self._klines_last_closed.get(interval_ms)
         if last_closed_all is None:
             last_closed_all = {}
@@ -291,15 +281,14 @@ class Aggregator:
         try:
             while self._running:
                 now = int(time.time() * 1000)
+
                 boundary = ((now // min_interval) + 1) * min_interval
                 sleep_s = (boundary - now) * 0.001
                 if sleep_s > 0:
                     await asyncio.sleep(sleep_s)
 
                 if self._trades_waiter_mode_enabled:
-                    await asyncio.sleep(
-                        self._trades_waiter_latency_ms / 1000
-                    )  # configurable extra delay in waiter mode
+                    await asyncio.sleep(self._trades_waiter_latency_ms / 1000)
 
                 self._timer_ticks_count += 1
                 if settings.klines_mode:
@@ -314,70 +303,76 @@ class Aggregator:
         out: list[dict[str, Any]] = []
 
         for symbol, intervals in self._trades_buckets.items():
-            last_close = self._trades_last_close.setdefault(symbol, {})
             first_kline_skipped = self._trades_first_kline_skipped.setdefault(
                 symbol, {}
             )
+            last_close_per_interval = self._trades_last_close.setdefault(symbol, {})
 
             for interval_ms in self._intervals_sorted:
-                if boundary_ms % interval_ms != 0:
+                interval_buckets = intervals.get(interval_ms, {})
+
+                if not interval_buckets:
+                    last_close = last_close_per_interval.get(interval_ms)
+                    if last_close is not None and boundary_ms % interval_ms == 0:
+                        out.append(
+                            {
+                                "symbol": symbol,
+                                "interval": interval_ms,
+                                "timestamp": boundary_ms - interval_ms,
+                                "open": last_close,
+                                "high": last_close,
+                                "low": last_close,
+                                "close": last_close,
+                                "volume": 0.0,
+                                "trade_count": 0,
+                            }
+                        )
                     continue
 
-                start = boundary_ms - interval_ms
-                bucket = intervals.get(interval_ms)
+                to_close = [
+                    start
+                    for start, bucket in interval_buckets.items()
+                    if bucket["end"] <= boundary_ms
+                ]
 
-                # If this is the first kline for this symbol-interval,
-                # skip it and remember to skip only once
-                if not first_kline_skipped.get(interval_ms, False):
-                    # whether a bucket was formed or not, we skip first
-                    first_kline_skipped[interval_ms] = True
-                    # Still need to pop the interval and update last_close
-                    # if a bucket exists
-                    if bucket is not None:
-                        intervals.pop(interval_ms, None)
-                        last_close[interval_ms] = bucket["c"]
-                    continue
+                for bucket_start in sorted(to_close):
+                    bucket = interval_buckets.pop(bucket_start)
 
-                if bucket is None:
-                    prev = last_close.get(interval_ms)
-                    if prev is None:
+                    if not first_kline_skipped.get(interval_ms, False):
+                        first_kline_skipped[interval_ms] = True
+                        last_close_per_interval[interval_ms] = bucket["c"]
                         continue
+
+                    next_bucket_start = bucket_start + interval_ms
+                    next_bucket = interval_buckets.get(next_bucket_start)
+                    if next_bucket is not None:
+                        next_bucket["o"] = bucket["c"]
+
+                    last_close_per_interval[interval_ms] = bucket["c"]
+
                     out.append(
                         {
                             "symbol": symbol,
                             "interval": interval_ms,
-                            "timestamp": start,
-                            "open": prev,
-                            "high": prev,
-                            "low": prev,
-                            "close": prev,
-                            "volume": 0.0,
-                            "trade_count": 0,
+                            "timestamp": bucket["start"],
+                            "open": bucket["o"],
+                            # recalculate high and low as max/min of o, h, c, l
+                            "high": max(
+                                bucket["o"], bucket["h"], bucket["c"], bucket["l"]
+                            ),
+                            "low": min(
+                                bucket["o"], bucket["h"], bucket["c"], bucket["l"]
+                            ),
+                            "close": bucket["c"],
+                            "volume": bucket["v"],
+                            "trade_count": bucket["n"],
                         }
                     )
-                    continue
-
-                intervals.pop(interval_ms, None)
-                last_close[interval_ms] = bucket["c"]
-                out.append(
-                    {
-                        "symbol": symbol,
-                        "interval": interval_ms,
-                        "timestamp": start,
-                        "open": bucket["o"],
-                        # todo: rework calc ohcl in main trade handle
-                        "high": max(bucket["o"], bucket["h"], bucket["l"], bucket["c"]),
-                        "low": min(bucket["o"], bucket["h"], bucket["l"], bucket["c"]),
-                        "close": bucket["c"],
-                        "volume": bucket["v"],
-                        "trade_count": bucket["n"],
-                    }
-                )
 
         if out:
-            logger.debug(
-                f"Closing {len(out)} klines at boundary "
-                f"{boundary_ms} in channel {self._channel} "
+            logger.info(
+                f"Closing {len(out)} klines at boundary {boundary_ms} "
+                f"in channel {self._channel}"
             )
             await self._broadcaster.consume(self._channel, "klines", out)
             await self._storage.process_klines(self._channel, out)
@@ -391,6 +386,7 @@ class Aggregator:
                 continue
 
             start_boundary = boundary_ms - interval_ms
+            waited = 0.0
 
             while True:
                 closed_by_interval = self._klines_last_closed.setdefault(
@@ -399,10 +395,17 @@ class Aggregator:
                 closed = closed_by_interval.get(start_boundary, [])
                 if len(closed) >= self._klines_total_symbols_count:
                     break
-                await asyncio.sleep(0.01)
+                if waited >= KLINE_MAX_WAIT_TIME:
+                    logger.warning(
+                        f"_wait_klines timeout: Received "
+                        f"{len(closed)}/{self._klines_total_symbols_count} symbols for "
+                        f"interval {interval_ms} at start={start_boundary}; "
+                        f"continuing with available."
+                    )
+                    break
+                await asyncio.sleep(KLINE_SLEEP_TIME)
+                waited += KLINE_SLEEP_TIME
 
-            # After wait, collect the closed klines for this interval,
-            # then remove (purge) them from self._klines_last_closed
             closed_klines = self._klines_last_closed[interval_ms].pop(
                 start_boundary, []
             )
@@ -411,7 +414,7 @@ class Aggregator:
                 out.extend(closed_klines)
 
         if out:
-            logger.debug(
+            logger.info(
                 f"Collect {len(out)} closed klines at boundary "
                 f"{boundary_ms} in channel {self._channel} "
             )

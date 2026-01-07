@@ -158,3 +158,5 @@ debug
 output
 
 tests/
+
+streamer/consumers/validator.py
