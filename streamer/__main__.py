@@ -25,16 +25,22 @@ async def main_async() -> None:
     consumers: List[BaseConsumer] = []
 
     try:
+        # Create main storage processor that will storage all data from websocket
+        storage = Storage()
+        await storage.setup()
+
         # Process and validate symbols
         await validate_settings_symbols()
 
         # Validate configuration
         logger.info(f"Configured symbols: {settings.bybit_symbols}")
-        logger.info(f"Configured intervals: {list(settings.kline_intervals)}")
+        logger.info(f"Configured intervals: {list(map(str, settings.kline_intervals))}")
         logger.info(f"Enabled consumers: {settings.enabled_consumers}")
 
         # Setup consumers
-        consumers = await ConsumerManager.setup_consumers(settings.enabled_consumers)
+        consumers = await ConsumerManager.setup_consumers(
+            storage, settings.enabled_consumers
+        )
 
         if consumers:
             # Initialize consumers
@@ -42,10 +48,6 @@ async def main_async() -> None:
 
             # Start consumers
             await ConsumerManager.start_consumers(consumers)
-
-            # Create main storage processor that will storage all data from websocket
-            storage = Storage()
-            await storage.setup()
 
             # Setup broadcaster
             broadcaster = Broadcaster(consumers)

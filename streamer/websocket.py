@@ -56,7 +56,11 @@ class WebSocketClient:
                 self.topic = "publicTrade.{symbol}"
 
         self.ticker_topic_part = "tickers."
-        if settings.enable_ticker_stream or settings.enable_price_stream:
+        if (
+            settings.enable_ticker_stream
+            or settings.enable_price_stream
+            or settings.enable_tickers_kline_stream
+        ):
             self.ticker_topic = "tickers.{symbol}"
 
         # Pool management
