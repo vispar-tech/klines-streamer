@@ -1,45 +1,28 @@
-"""Console consumer for printing kline data to the console."""
+"""Print kline data to the console."""
 
 from typing import Any, Dict, List
 
 from streamer.consumers.base import BaseConsumer
+from streamer.storage import Storage
 from streamer.types import Channel, DataType
 
 
 class ConsoleConsumer(BaseConsumer):
-    """Prints kline data to the console."""
+    """Print kline data to the console."""
 
-    def __init__(self, name: str = "console") -> None:
-        """
-        Initialize the ConsoleConsumer.
-
-        Args:
-            name: Consumer name/identifier (defaults to "console").
-        """
-        super().__init__(name)
+    def __init__(self, storage: Storage, name: str = "console") -> None:
+        """Initialize ConsoleConsumer."""
+        super().__init__(storage, name)
 
     def validate(self) -> None:
-        """
-        Validate console consumer settings.
-
-        Console consumer doesn't require any specific settings.
-        """
+        """Validate console consumer settings."""
 
     async def setup(self) -> None:
-        """
-        Set up the console consumer.
-
-        Called once before starting consumption.
-        Use this method for resource allocation or preparation.
-        """
+        """Set up the console consumer."""
         self.logger.info("Setting up console consumer")
 
     async def start(self) -> None:
-        """
-        Start the console consumer.
-
-        Marks the consumer as running and ready to process data.
-        """
+        """Start the console consumer."""
         self.logger.info("Starting console consumer")
         self._is_running = True
 
@@ -49,15 +32,7 @@ class ConsoleConsumer(BaseConsumer):
         data_type: DataType,
         data: List[Dict[str, Any]],
     ) -> None:
-        """
-        Consume and print streaming data to the console.
-
-        Args:
-            channel: The data stream channel ("linear", "spot", etc.).
-            data_type: The type of data being consumed
-                ("klines", "ticker", "price", "trades").
-            data: A list of dictionaries with payload data.
-        """
+        """Print streaming data to console."""
         if not self._is_running or not data:
             return
 
@@ -86,10 +61,6 @@ class ConsoleConsumer(BaseConsumer):
                 self.logger.info(f"[{channel.upper()}] [TRADE] [{symbol}] {trade_repr}")
 
     async def stop(self) -> None:
-        """
-        Stop the console consumer.
-
-        Marks the consumer as stopped and performs any necessary cleanup.
-        """
+        """Stop the console consumer."""
         self.logger.info("Stopping console consumer")
         self._is_running = False

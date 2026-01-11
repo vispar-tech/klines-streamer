@@ -22,6 +22,7 @@ REDIS_MAIN_KEY = settings.redis_main_key
 REDIS_HASH_KEY = f"{REDIS_MAIN_KEY}:tickers"
 REDIS_PRICE_KEY = f"{REDIS_MAIN_KEY}:price"
 REDIS_LAST_CLOSED = f"{REDIS_MAIN_KEY}:last-closed"
+REDIS_LAST_CLOSED_TICKERS = f"{REDIS_MAIN_KEY}:last-closed-tickers"
 
 
 class Storage:
@@ -150,6 +151,107 @@ class Storage:
                 )
         except Exception as e:
             logger.error(f"Failed to save klines to Redis (channel={channel}): {e}")
+
+    async def process_tickers_klines(
+        self, channel: Channel, data: list[dict[str, Any]]
+    ) -> None:
+        """
+        Store ticker kline data into Redis, grouped by interval.
+
+        Each interval has its own key under the channel with ticker kline prefix.
+        """
+        if not settings.storage_enabled:
+            return
+
+        redis = self.redis
+        if redis is None:
+            logger.error("Storage: Redis connection is not initialized")
+            return
+
+        # Group ticker klines by interval (assume "interval" field exists in each kline)
+        intervals_map: dict[str, list[dict[str, Any]]] = {}
+        for kline in data:
+            intervals_map.setdefault(kline["interval"], []).append(kline)
+
+        try:
+            for interval, grouped_klines in intervals_map.items():
+                parsed_interval = Interval(interval)
+                key = f"{REDIS_LAST_CLOSED_TICKERS}:{channel}:{parsed_interval}"
+                await redis.set(
+                    key,
+                    orjson.dumps(grouped_klines).decode("utf-8"),
+                    px=parsed_interval.to_milliseconds(),
+                )
+        except Exception as e:
+            logger.error(
+                f"Failed to save ticker klines to Redis (channel={channel}): {e}"
+            )
+
+    async def get_last_closed_klines(self, channel: Channel) -> list[dict[str, Any]]:
+        """
+        Get last closed klines for all intervals from Redis.
+
+        Returns:
+            List of kline data from all intervals
+        """
+        if not settings.storage_enabled:
+            return []
+
+        redis = self.redis
+        if redis is None:
+            logger.error("Storage: Redis connection is not initialized")
+            return []
+
+        all_klines: list[dict[str, Any]] = []
+        try:
+            for interval in settings.kline_intervals:
+                key = f"{REDIS_LAST_CLOSED}:{channel}:{interval}"
+                data = await redis.get(key)
+                if data:
+                    try:
+                        klines = orjson.loads(data)
+                        all_klines.extend(klines)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse klines data for {key}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to get last closed klines from Redis: {e}")
+
+        return all_klines
+
+    async def get_last_closed_ticker_klines(
+        self, channel: Channel
+    ) -> list[dict[str, Any]]:
+        """
+        Get last closed ticker klines for all intervals from Redis.
+
+        Returns:
+            List of ticker kline data from all intervals
+        """
+        if not settings.storage_enabled:
+            return []
+
+        redis = self.redis
+        if redis is None:
+            logger.error("Storage: Redis connection is not initialized")
+            return []
+
+        all_klines: list[dict[str, Any]] = []
+        try:
+            for interval in settings.kline_intervals:
+                key = f"{REDIS_LAST_CLOSED_TICKERS}:{channel}:{interval}"
+                data = await redis.get(key)
+                if data:
+                    try:
+                        klines = orjson.loads(data)
+                        all_klines.extend(klines)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to parse ticker klines data for {key}: {e}"
+                        )
+        except Exception as e:
+            logger.error(f"Failed to get last closed ticker klines from Redis: {e}")
+
+        return all_klines
 
     async def close(self) -> None:
         """Close Redis connection if open."""

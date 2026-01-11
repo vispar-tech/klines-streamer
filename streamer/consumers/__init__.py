@@ -6,8 +6,8 @@ from typing import Dict, List, Set, Type
 from streamer.consumers.base import BaseConsumer
 from streamer.consumers.console import ConsoleConsumer
 from streamer.consumers.redis import RedisConsumer
-from streamer.consumers.validator import ValidatorConsumer
 from streamer.consumers.websocket import WebSocketConsumer
+from streamer.storage import Storage
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,6 @@ class ConsumerRegistry:
         self.register("console", ConsoleConsumer)
         self.register("redis", RedisConsumer)
         self.register("websocket", WebSocketConsumer)
-        self.register("validator", ValidatorConsumer)
 
     def register(self, name: str, consumer_class: Type[BaseConsumer]) -> None:
         """
@@ -103,7 +102,9 @@ class ConsumerRegistry:
 
         return errors
 
-    def create_consumers(self, consumer_names: Set[str]) -> List[BaseConsumer]:
+    def create_consumers(
+        self, storage: Storage, consumer_names: Set[str]
+    ) -> List[BaseConsumer]:
         """
         Create consumer instances for the given names.
 
@@ -121,26 +122,10 @@ class ConsumerRegistry:
         consumers: list[BaseConsumer] = []
         for name in consumer_names:
             consumer_class = self._registry[name]
-            consumer = consumer_class(name)
+            consumer = consumer_class(storage, name)
             consumers.append(consumer)
 
         return consumers
-
-    def create_consumer(self, name: str) -> BaseConsumer:
-        """
-        Create a single consumer instance.
-
-        Args:
-            name: Name of the consumer to create
-
-        Returns:
-            Consumer instance
-
-        Raises:
-            ValueError: If consumer name is invalid
-        """
-        consumer_class = self.get_consumer_class(name)
-        return consumer_class(name)
 
 
 class ConsumerManager:
@@ -166,7 +151,9 @@ class ConsumerManager:
         return cls._registry.list_consumers()
 
     @classmethod
-    async def setup_consumers(cls, enabled_consumers: Set[str]) -> List[BaseConsumer]:
+    async def setup_consumers(
+        cls, storage: Storage, enabled_consumers: Set[str]
+    ) -> List[BaseConsumer]:
         """
         Set up consumers.
 
@@ -191,7 +178,7 @@ class ConsumerManager:
 
         try:
             # Create consumers (validation happens in __init__)
-            consumers = cls._registry.create_consumers(enabled_consumers)
+            consumers = cls._registry.create_consumers(storage, enabled_consumers)
             cls._logger.info(
                 f"Created {len(consumers)} consumer(s): {enabled_consumers}"
             )

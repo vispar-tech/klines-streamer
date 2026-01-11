@@ -1,4 +1,4 @@
-"""WebSocket consumer for streaming kline data."""
+"""Implement WebSocket consumer for streaming kline data."""
 
 import asyncio
 import contextlib
@@ -10,41 +10,27 @@ from websockets.exceptions import ConnectionClosed
 
 from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
+from streamer.storage import Storage
 from streamer.types import Channel, DataType
 
 
 class WebSocketConnectionManager:
-    """Manages WebSocket client connections."""
+    """Manage WebSocket client connections."""
 
     def __init__(self) -> None:
-        """Initialize the WebSocketConnectionManager with an empty connection set."""
+        """Initialize empty WebSocket connection set."""
         self.connections: Set[ServerConnection] = set()
 
     def add(self, ws: ServerConnection) -> None:
-        """
-        Add a WebSocket connection to the managed set.
-
-        Args:
-            ws: The ServerConnection connection to add.
-        """
+        """Add a WebSocket connection to the set."""
         self.connections.add(ws)
 
     def remove(self, ws: ServerConnection) -> None:
-        """
-        Remove (discard) a WebSocket connection from the managed set.
-
-        Args:
-            ws: The ServerConnection connection to remove.
-        """
+        """Remove a WebSocket connection from the set."""
         self.connections.discard(ws)
 
     async def broadcast(self, message: str) -> None:
-        """
-        Broadcast a message to all managed WebSocket connections.
-
-        Args:
-            message: The string message to send to all clients.
-        """
+        """Broadcast message to all WebSocket connections."""
         if not self.connections:
             return
         websockets = self.connections.copy()
@@ -60,31 +46,22 @@ class WebSocketConnectionManager:
             self.connections.discard(ws)
 
     def count(self) -> int:
-        """
-        Return the number of currently managed WebSocket connections.
-
-        Returns:
-            int: The number of connections.
-        """
+        """Return the number of WebSocket connections."""
         return len(self.connections)
 
 
 class WebSocketConsumer(BaseConsumer):
-    """WebSocket consumer for streaming kline data to connected clients."""
+    """Stream kline data to connected WebSocket clients."""
 
-    def __init__(self, name: str = "websocket") -> None:
-        """Initialize the WebSocketConsumer and its resource manager."""
-        super().__init__(name)
+    def __init__(self, storage: Storage, name: str = "websocket") -> None:
+        """Initialize with storage and resource manager."""
+        super().__init__(storage, name)
         self.connection_manager = WebSocketConnectionManager()
         self.server: Server | None = None
         self._server_task: asyncio.Task[None] | None = None
 
     def validate(self) -> None:
-        """
-        Validate WebSocket consumer settings.
-
-        Checks that all WebSocket settings are configured.
-        """
+        """Validate WebSocket consumer settings."""
         from streamer.settings import settings
 
         if not settings.websocket_host:
@@ -109,18 +86,7 @@ class WebSocketConsumer(BaseConsumer):
             )
 
     async def authenticate(self, ws: ServerConnection) -> bool:
-        """
-        Authenticate a WebSocket client.
-
-        Expects the client to send authentication credentials as the first message
-        in the format: {"user": "username", "key": "auth_key"}
-
-        Args:
-            ws: The ServerConnection representing the client connection.
-
-        Returns:
-            bool: True if the client is authenticated, False otherwise.
-        """
+        """Authenticate a WebSocket client."""
         try:
             auth_message = await asyncio.wait_for(ws.recv(), timeout=10.0)
             try:
@@ -153,13 +119,7 @@ class WebSocketConsumer(BaseConsumer):
             return False
 
     async def _client_handler(self, ws: ServerConnection) -> None:
-        """
-        Handle a single WebSocket client connection.
-
-        Handles authentication, websocket path check, and ping/pong messages.
-        Args:
-            ws: The ServerConnection representing the client connection.
-        """
+        """Handle a single WebSocket client connection."""
         client_address = ws.remote_address
         self.logger.info(f"New client connection: {client_address}")
 
@@ -187,6 +147,9 @@ class WebSocketConsumer(BaseConsumer):
                 f"Client authenticated. Total: {self.connection_manager.count()}"
             )
 
+            # Send initial data to the client
+            await self._send_initial_data(ws)
+
             async for message in ws:
                 try:
                     data = orjson.loads(message)
@@ -210,20 +173,11 @@ class WebSocketConsumer(BaseConsumer):
             )
 
     async def setup(self) -> None:
-        """
-        Set up resources for the WebSocket consumer.
-
-        Note: Actual server instantiation occurs in start().
-        """
+        """Set up WebSocket consumer resources."""
         self.logger.info("Setting up WebSocket consumer")
-        # Server will be started in start()
 
     async def start(self) -> None:
-        """
-        Start the WebSocket consumer and run the websocket server.
-
-        Sets up the WebSocket server and task to keep it running.
-        """
+        """Start WebSocket consumer and run the server."""
         self.logger.info("Starting WebSocket consumer")
 
         if not settings.websocket_host or not settings.websocket_port:
@@ -233,7 +187,7 @@ class WebSocketConsumer(BaseConsumer):
         port = settings.websocket_port
 
         async def handler(ws: ServerConnection) -> None:
-            """WebSocket server handler wrapper for _client_handler."""
+            """Wrap _client_handler for websockets server."""
             await self._client_handler(ws)
 
         try:
@@ -251,12 +205,7 @@ class WebSocketConsumer(BaseConsumer):
     async def consume(
         self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
     ) -> None:
-        """
-        Consume kline data and broadcast to WebSocket clients.
-
-        Args:
-            data: Kline data dictionary containing symbol, interval, and kline data.
-        """
+        """Broadcast kline data to WebSocket clients."""
         if not self._is_running:
             return
 
@@ -267,17 +216,13 @@ class WebSocketConsumer(BaseConsumer):
             await self.connection_manager.broadcast(message)
 
             c = self.connection_manager.count()
-            self.logger.debug(f"Broadcasted kline data to {c} WebSocket client(s)")
+            if data_type in ["klines", "tickers-klines"]:
+                self.logger.debug(f"Broadcasted kline data to {c} WebSocket client(s)")
         except Exception as e:
             self.logger.error(f"Broadcast failed: {e}")
 
     async def stop(self) -> None:
-        """
-        Stop the WebSocket consumer and clean up resources.
-
-        This involves closing all active client connections and
-        shutting down the server.
-        """
+        """Stop WebSocket consumer and clean up resources."""
         self.logger.info("Stopping WebSocket consumer")
         self._is_running = False
 
@@ -303,3 +248,43 @@ class WebSocketConsumer(BaseConsumer):
         finally:
             self.server = None
             self._server_task = None
+
+    async def _send_initial_data(self, ws: ServerConnection) -> None:
+        """Send initial kline data to newly connected client."""
+        try:
+            # Get last closed klines for all channels
+            channels: list[Channel] = ["linear", "spot"]
+
+            for channel in channels:
+                try:
+                    # Send regular klines
+                    klines_data = await self._storage.get_last_closed_klines(channel)
+                    if klines_data:
+                        message = orjson.dumps(
+                            {
+                                "channel": channel,
+                                "data_type": "klines",
+                                "data": klines_data,
+                            }
+                        ).decode("utf-8")
+                        await ws.send(message)
+
+                    # Send ticker klines
+                    ticker_klines_data = (
+                        await self._storage.get_last_closed_ticker_klines(channel)
+                    )
+                    if ticker_klines_data:
+                        message = orjson.dumps(
+                            {
+                                "channel": channel,
+                                "data_type": "tickers-klines",
+                                "data": ticker_klines_data,
+                            }
+                        ).decode("utf-8")
+                        await ws.send(message)
+
+                except Exception as e:
+                    self.logger.warning(f"Failed to send initial {channel} data: {e}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending initial data to client: {e}")

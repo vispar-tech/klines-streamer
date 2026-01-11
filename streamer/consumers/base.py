@@ -4,87 +4,49 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
+from streamer.storage import Storage
 from streamer.types import Channel, DataType
 
 
 class BaseConsumer(ABC):
-    """Abstract base class for all consumers."""
+    """Define abstract base consumer class."""
 
-    def __init__(self, name: str) -> None:
-        """
-        Initialize the consumer.
-
-        Args:
-            name: Consumer name/identifier
-        """
+    def __init__(self, storage: Storage, name: str) -> None:
+        """Initialize consumer."""
         self.name = name
-        # Use logger like streamer.consumers.<consumer-name>
+        self._storage = storage
         self.logger = logging.getLogger(f"streamer.consumers.{name}")
         self._is_running = False
-
-        # Validate consumer settings
         self.validate()
 
     @abstractmethod
     async def setup(self) -> None:
-        """
-        Set up the consumer (initialize connections, resources, etc.).
-
-        This method should be called before start().
-        """
-        ...
+        """Set up consumer."""
 
     @abstractmethod
     async def start(self) -> None:
-        """
-        Start the consumer.
-
-        This method should start any background tasks or connections.
-        """
-        ...
+        """Start consumer."""
 
     @abstractmethod
     async def consume(
         self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
     ) -> None:
-        """
-        Consume and process data of given type.
-
-        Args:
-            channel: The channel name or identifier for the data stream.
-            data_type: The type of the data, e.g., "klines", "ticker", "price".
-            data: Data dictionary containing symbol, interval, and data details.
-        """
-        ...
+        """Consume and process data."""
 
     @abstractmethod
     async def stop(self) -> None:
-        """
-        Stop the consumer and cleanup resources.
-
-        This method should gracefully shutdown the consumer.
-        """
-        ...
+        """Stop consumer and clean up resources."""
 
     @abstractmethod
     def validate(self) -> None:
-        """
-        Validate consumer-specific settings.
-
-        This method should check that all required settings for this consumer
-        are properly configured. Called during __init__.
-
-        Raises:
-            ValueError: If required settings are missing or invalid
-        """
-        ...
+        """Validate consumer settings."""
 
     def is_running(self) -> bool:
-        """Check if the consumer is currently running."""
+        """Return running state."""
         return self._is_running
 
     async def __aenter__(self) -> "BaseConsumer":
-        """Async context manager entry."""
+        """Enter async context."""
         await self.setup()
         await self.start()
         return self
@@ -95,5 +57,5 @@ class BaseConsumer(ABC):
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
-        """Async context manager exit."""
+        """Exit async context."""
         await self.stop()

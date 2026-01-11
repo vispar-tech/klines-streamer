@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     enable_klines_stream: bool = True
     enable_price_stream: bool = False
     enable_ticker_stream: bool = False
+    enable_tickers_kline_stream: bool = False
     enable_trades_stream: bool = False
     enable_spot_stream: bool = False
 
@@ -118,16 +119,19 @@ class Settings(BaseSettings):
                 )
 
         # Ensure at least one of the streaming options is enabled
-        if not (
-            self.enable_klines_stream
-            or self.enable_price_stream
-            or self.enable_ticker_stream
-            or self.enable_trades_stream
-        ):
+        enabled_flags = [
+            self.enable_klines_stream,
+            self.enable_price_stream,
+            self.enable_ticker_stream,
+            self.enable_tickers_kline_stream,
+            self.enable_trades_stream,
+        ]
+        if not any(enabled_flags):
             raise ValueError(
                 "At least one of 'enable_klines_stream', "
                 "'enable_price_stream', 'enable_ticker_stream', "
-                "or 'enable_trades_stream' must be enabled."
+                "'enable_tickers_kline_stream', or 'enable_trades_stream' "
+                "must be enabled."
             )
 
         return self

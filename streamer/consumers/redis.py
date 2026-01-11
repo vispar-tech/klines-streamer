@@ -1,4 +1,4 @@
-"""Redis consumer for publishing kline data."""
+"""Publish kline data to Redis."""
 
 from typing import Any, Dict, List
 
@@ -8,23 +8,20 @@ from redis.asyncio import from_url as connection_from_url
 
 from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
+from streamer.storage import Storage
 from streamer.types import Channel, DataType
 
 
 class RedisConsumer(BaseConsumer):
-    """Redis consumer for publishing kline data to a Redis pubsub channel."""
+    """Publish kline data to a Redis pubsub channel."""
 
-    def __init__(self, name: str = "redis") -> None:
+    def __init__(self, storage: Storage, name: str = "redis") -> None:
         """Initialize Redis consumer."""
-        super().__init__(name)
+        super().__init__(storage, name)
         self.redis: "Redis | None" = None
 
     def validate(self) -> None:
-        """
-        Validate Redis consumer settings.
-
-        Checks that Redis URL and channel are configured.
-        """
+        """Validate Redis consumer settings."""
         if not settings.redis_url:
             raise ValueError("REDIS_URL is required when Redis consumer is enabled")
         if not settings.redis_main_key:
@@ -33,7 +30,7 @@ class RedisConsumer(BaseConsumer):
             )
 
     async def setup(self) -> None:
-        """Set up Redis connection and resources."""
+        """Set up Redis connection."""
         self.logger.info("Setting up Redis consumer")
 
         if not settings.redis_url:
@@ -50,29 +47,23 @@ class RedisConsumer(BaseConsumer):
             raise
 
     async def start(self) -> None:
-        """Start the Redis consumer."""
+        """Start Redis consumer."""
         self.logger.info("Starting Redis consumer")
         self._is_running = True
+        # Initial data publication is omitted as requested
 
     async def consume(
         self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
     ) -> None:
-        """
-        Consume kline data and publish to Redis.
-
-        Args:
-            data: Kline data dictionary containing symbol, interval, and kline data
-        """
+        """Publish kline data to Redis."""
         if not self._is_running or not self.redis:
             return
 
         try:
-            # Serialize data using orjson for better performance
             message = orjson.dumps(
                 {"channel": channel, "data_type": data_type, "data": data}
             ).decode("utf-8")
 
-            # Publish all kline data to the single configured main key
             if not settings.redis_main_key:
                 self.logger.error("Redis main key is not configured")
                 return
@@ -89,7 +80,7 @@ class RedisConsumer(BaseConsumer):
             # Don't re-raise to avoid breaking the stream
 
     async def stop(self) -> None:
-        """Stop the Redis consumer and cleanup resources."""
+        """Stop Redis consumer and clean up resources."""
         self.logger.info("Stopping Redis consumer")
         self._is_running = False
 
