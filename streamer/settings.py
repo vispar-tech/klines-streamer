@@ -4,6 +4,7 @@ from typing import Annotated, Any, Set
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from yarl import URL
 
 from streamer.types import Interval
 
@@ -28,7 +29,12 @@ class Settings(BaseSettings):
 
     # Redis configuration
     # (optional - only required when Redis consumer is enabled)
-    redis_url: str | None = None
+    redis_host: str | None = None
+    redis_port: int | None = None
+    redis_user: str | None = None
+    redis_password: str | None = None
+    redis_base: int | None = None
+
     redis_main_key: str | None = None
 
     # WebSocket server configuration
@@ -135,6 +141,27 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    @property
+    def redis_url(self) -> URL:
+        """
+        Assemble REDIS URL from settings.
+
+        :return: redis URL.
+        """
+        path = ""
+        if self.redis_base is not None:
+            path = f"/{self.redis_base}"
+        if not self.redis_host:
+            raise RuntimeError("redis_host is required to assemble the redis_url")
+        return URL.build(
+            scheme="redis",
+            host=self.redis_host,
+            port=self.redis_port,
+            user=self.redis_user,
+            password=self.redis_password,
+            path=path,
+        )
 
     model_config = SettingsConfigDict(
         env_file=".env",
