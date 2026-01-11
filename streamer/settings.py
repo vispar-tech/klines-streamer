@@ -143,18 +143,18 @@ class Settings(BaseSettings):
         return self
 
     @property
-    def redis_url(self) -> URL:
+    def redis_url(self) -> str:
         """
         Assemble REDIS URL from settings.
 
-        :return: redis URL.
+        :return: redis URL as string.
         """
         path = ""
         if self.redis_base is not None:
             path = f"/{self.redis_base}"
         if not self.redis_host:
             raise RuntimeError("redis_host is required to assemble the redis_url")
-        return URL.build(
+        url = URL.build(
             scheme="redis",
             host=self.redis_host,
             port=self.redis_port,
@@ -162,6 +162,7 @@ class Settings(BaseSettings):
             password=self.redis_password,
             path=path,
         )
+        return str(url)
 
     model_config = SettingsConfigDict(
         env_file=".env",
