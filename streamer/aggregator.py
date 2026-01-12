@@ -43,6 +43,7 @@ class Aggregator:
         "_timer_ticks_count",
         "_trades_buckets",
         "_trades_first_kline_skipped",
+        "_trades_last_boundary",
         "_trades_last_close",
         "_trades_waiter_latency_ms",
         "_trades_waiter_mode_enabled",
@@ -73,6 +74,8 @@ class Aggregator:
         self._trades_buckets: Dict[str, Dict[int, Dict[int, Dict[str, Any]]]] = {}
         self._trades_first_kline_skipped: Dict[str, Dict[int, bool]] = {}
         self._trades_last_close: Dict[str, Dict[int, Any]] = {}
+        self._trades_last_boundary: dict[int, int] = {}
+        # For waiter mode
         self._trades_waiter_mode_enabled = settings.aggregator_waiter_mode_enabled
         self._trades_waiter_latency_ms = settings.aggregator_waiter_latency_ms
 
@@ -157,6 +160,7 @@ class Aggregator:
         trades_data = message["data"]
         trades_buckets = self._trades_buckets
         trades_last_close = self._trades_last_close
+        trades_last_boundary = self._trades_last_boundary
 
         for trade in trades_data:
             # Extract trade data once
@@ -173,6 +177,24 @@ class Aggregator:
                 # Calculate bucket boundaries
                 bucket_start_ts = (trade_ts // interval_ms) * interval_ms
                 bucket_end_ts = bucket_start_ts + interval_ms
+
+                # Use the last processed boundary for trades (like tickers)
+                last_processed_boundary = trades_last_boundary.get(interval_ms)
+                if (
+                    last_processed_boundary is not None
+                    and bucket_end_ts <= last_processed_boundary
+                ):
+                    if logger.isEnabledFor(logging.WARN):
+                        logger.warning(
+                            "Trade over boundary for symbol=%s, interval=%s: "
+                            "last_boundary=%s, bucket_end=%s, trade=%r",
+                            trade_symbol,
+                            interval_ms,
+                            last_processed_boundary,
+                            bucket_end_ts,
+                            trade,
+                        )
+                    continue
 
                 # Get interval-specific storage
                 interval_buckets = symbol_buckets.setdefault(interval_ms, {})
@@ -213,7 +235,11 @@ class Aggregator:
             _, interval_str, kline_symbol = kline_topic.split(".")
             interval_ms = self._interval_str_ms_map[interval_str]
         except Exception as e:
-            logger.error(f"Malformed kline topic: {kline_topic}, error: {e}")
+            logger.error(
+                "Malformed kline topic: %s, error: %s",
+                kline_topic,
+                e,
+            )
             return
 
         # Get kline data
@@ -267,7 +293,10 @@ class Aggregator:
         ticker_data = cast("dict[str, Any]", message.get("data"))
 
         if not ticker_data:
-            logger.warning(f"No 'data' field in tickers event: {message}")
+            logger.warning(
+                "No 'data' field in tickers event: %s",
+                message,
+            )
             return
 
         # Process ticker snapshot
@@ -319,7 +348,7 @@ class Aggregator:
 
         # Log successful start
         channel_name = self._channel
-        logger.info(f"Aggregator started for channel: {channel_name}")
+        logger.info("Aggregator started for channel: %s", channel_name)
 
     async def stop(self) -> None:
         """Stop aggregator timer and cleanup resources."""
@@ -341,7 +370,7 @@ class Aggregator:
 
         # Log successful stop
         channel_name = self._channel
-        logger.info(f"Aggregator stopped for channel: {channel_name}")
+        logger.info("Aggregator stopped for channel: %s", channel_name)
 
     def _process_ticker_snapshot(
         self,
@@ -539,6 +568,7 @@ class Aggregator:
         intervals_sorted = self._intervals_sorted
 
         closed_klines: list[dict[str, Any]] = []
+        intervals_hit: set[int] = set()
 
         for symbol, intervals in trades_buckets.items():
             # Get or create tracking dicts for this symbol
@@ -546,7 +576,7 @@ class Aggregator:
             last_close_values = trades_last_close.setdefault(symbol, {})
 
             for interval_ms in intervals_sorted:
-                interval_buckets = intervals.get(interval_ms, {})
+                interval_buckets = intervals.get(interval_ms)
 
                 # No buckets for this interval - create empty kline if possible
                 if not interval_buckets:
@@ -565,6 +595,7 @@ class Aggregator:
                                 "trade_count": 0,
                             }
                         )
+                        intervals_hit.add(interval_ms)
                     continue
 
                 # Find buckets ready to close (past boundary)
@@ -573,6 +604,8 @@ class Aggregator:
                     for bucket_start, bucket in interval_buckets.items()
                     if bucket["end"] <= boundary_ms
                 ]
+                if buckets_to_close:
+                    intervals_hit.add(interval_ms)
 
                 # Process each bucket that needs closing
                 for bucket_start in sorted(buckets_to_close):
@@ -604,7 +637,6 @@ class Aggregator:
                         continue
 
                     # Regular kline processing - ensure next bucket exists
-                    bucket_close_price = bucket["c"]
                     if next_bucket is None:
                         interval_buckets[next_bucket_start] = {
                             "start": next_bucket_start,
@@ -647,8 +679,13 @@ class Aggregator:
             total_symbols = self._klines_total_symbols_count
             channel_name = self._channel
             logger.info(
-                f"Closing {len(closed_klines)}/{total_symbols} "
-                f"klines at boundary {boundary_ms} in channel {channel_name}"
+                "Closing %s/%s klines at boundary %s in channel %s; "
+                "intervals closed: %s",
+                len(closed_klines),
+                total_symbols * len(intervals_hit),
+                boundary_ms,
+                channel_name,
+                intervals_hit,
             )
             await self._broadcaster.consume(channel_name, "klines", closed_klines)
             await self._storage.process_klines(channel_name, closed_klines)
@@ -663,6 +700,7 @@ class Aggregator:
         intervals_sorted = self._intervals_sorted
 
         closed_ticker_klines: list[dict[str, Any]] = []
+        intervals_hit: set[int] = set()
 
         for symbol, intervals in tickers_buckets.items():
             # Get or create tracking dicts for this symbol
@@ -694,6 +732,7 @@ class Aggregator:
                                 "c": field_value,
                             }
                         closed_ticker_klines.append(empty_kline)
+                        intervals_hit.add(interval_ms)
                     continue
 
                 # Find buckets ready to close (past boundary)
@@ -702,6 +741,9 @@ class Aggregator:
                     for bucket_start, bucket in interval_buckets.items()
                     if bucket["end"] <= boundary_ms
                 ]
+
+                if buckets_to_close:
+                    intervals_hit.add(interval_ms)
 
                 # Process each bucket that needs closing
                 for bucket_start in sorted(buckets_to_close):
@@ -723,8 +765,13 @@ class Aggregator:
             total_symbols = self._klines_total_symbols_count
             channel_name = self._channel
             logger.info(
-                f"Closing {len(closed_ticker_klines)}/{total_symbols} ticker klines "
-                f"at boundary {boundary_ms} in channel {channel_name}"
+                "Closing %s/%s ticker klines at boundary %s in channel %s; "
+                "intervals closed: %s",
+                len(closed_ticker_klines),
+                total_symbols * len(intervals_hit),
+                boundary_ms,
+                channel_name,
+                intervals_hit,
             )
             await self._broadcaster.consume(
                 channel_name, "tickers-klines", closed_ticker_klines
@@ -803,8 +850,10 @@ class Aggregator:
         for field_name in numeric_fields:
             if field_name not in bucket:
                 logger.warning(
-                    f"Field {field_name} missing in first ticker bucket for "
-                    f"symbol={ticker_symbol} interval={interval_ms}"
+                    "Field %s missing in first ticker bucket for symbol=%s interval=%s",
+                    field_name,
+                    ticker_symbol,
+                    interval_ms,
                 )
 
         # Set next bucket open prices
@@ -846,8 +895,10 @@ class Aggregator:
         for field_name in numeric_fields:
             if field_name not in bucket:
                 logger.warning(
-                    f"Field {field_name} missing in ticker bucket for "
-                    f"symbol={ticker_symbol} interval={interval_ms}"
+                    "Field %s missing in ticker bucket for symbol=%s interval=%s",
+                    field_name,
+                    ticker_symbol,
+                    interval_ms,
                 )
 
     def _create_ticker_kline_data(
@@ -901,10 +952,12 @@ class Aggregator:
 
                 if wait_time >= KLINE_MAX_WAIT_TIME:
                     logger.warning(
-                        f"_wait_klines timeout: Received "
-                        f"{len(available_klines)}/{total_symbols} symbols for "
-                        f"interval {interval_ms} at start={start_boundary}; "
-                        f"continuing with available."
+                        "_wait_klines timeout: Received %s/%s symbols for interval %s "
+                        "at start=%s; continuing with available.",
+                        len(available_klines),
+                        total_symbols,
+                        interval_ms,
+                        start_boundary,
                     )
                     break
 
@@ -919,8 +972,10 @@ class Aggregator:
         # Publish collected klines if any
         if collected_klines:
             logger.info(
-                f"Collect {len(collected_klines)} closed klines at boundary "
-                f"{boundary_ms} in channel {channel_name}"
+                "Collect %s closed klines at boundary %s in channel %s",
+                len(collected_klines),
+                boundary_ms,
+                channel_name,
             )
             await self._broadcaster.consume(channel_name, "klines", collected_klines)
             await self._storage.process_klines(channel_name, collected_klines)

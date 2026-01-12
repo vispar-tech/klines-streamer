@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 BYBIT_KLINE_ENDPOINT = "https://api.bybit.com/v5/market/kline"
 LIMIT = 1  # only fetch 1 kline
-CONCURRENCY = 3  # small concurrency for cost; adjust if needed
+CONCURRENCY = 40
 
 
 class ValidatorConsumer(BaseConsumer):

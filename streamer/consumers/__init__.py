@@ -5,6 +5,7 @@ from typing import Dict, List, Set, Type
 
 from streamer.consumers.base import BaseConsumer
 from streamer.consumers.console import ConsoleConsumer
+from streamer.consumers.file import FileConsumer
 from streamer.consumers.redis import RedisConsumer
 from streamer.consumers.validator import ValidatorConsumer
 from streamer.consumers.websocket import WebSocketConsumer
@@ -22,6 +23,7 @@ class ConsumerRegistry:
 
         # Register built-in consumers
         self.register("console", ConsoleConsumer)
+        self.register("file", FileConsumer)
         self.register("redis", RedisConsumer)
         self.register("websocket", WebSocketConsumer)
         self.register("validator", ValidatorConsumer)
@@ -250,6 +252,4 @@ __all__ = [
     "ConsoleConsumer",
     "ConsumerManager",
     "ConsumerRegistry",
-    "RedisConsumer",
-    "WebSocketConsumer",
 ]
