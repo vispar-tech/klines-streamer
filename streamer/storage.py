@@ -18,7 +18,7 @@ from streamer.types import Channel, Interval
 logger = logging.getLogger(__name__)
 
 # Redis hash key for storing all tickers (per symbol as field)
-REDIS_MAIN_KEY = settings.redis_main_key
+REDIS_MAIN_KEY = f"{settings.redis_main_key}:{settings.exchange}"
 REDIS_HASH_KEY = f"{REDIS_MAIN_KEY}:tickers"
 REDIS_PRICE_KEY = f"{REDIS_MAIN_KEY}:price"
 REDIS_LAST_CLOSED = f"{REDIS_MAIN_KEY}:last-closed"

@@ -41,10 +41,14 @@ class ConsoleConsumer(BaseConsumer):
             if data_type == "klines":
                 interval = item.get("interval", "unknown")
                 ts = item.get("timestamp", "unknown")
+                open_ = item.get("open", "")
+                high = item.get("high", "")
+                low = item.get("low", "")
                 close = item.get("close", "")
-                # Print summary of kline (candlestick) close value
+                # Print summary of kline (candlestick) OHLC values
                 self.logger.info(
-                    f"[{channel.upper()}] [{symbol}] [{interval}] {ts} close={close}"
+                    f"[{channel.upper()}] [{symbol}] [{interval}] {ts} "
+                    f"open={open_} high={high} low={low} close={close}"
                 )
             elif data_type == "ticker":
                 # Print full ticker snapshot

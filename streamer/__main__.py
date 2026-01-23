@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import sys
-from typing import Any, List
+from typing import List
 
 from streamer.aggregator import Aggregator
 from streamer.broadcaster import Broadcaster
@@ -11,7 +11,7 @@ from streamer.consumers import BaseConsumer, ConsumerManager
 from streamer.settings import settings
 from streamer.storage import Storage
 from streamer.utils import setup_logging, validate_settings_symbols
-from streamer.websocket import WebSocketClient
+from streamer.websockets import get_websocket_client
 
 logger = logging.getLogger("streamer")
 
@@ -56,26 +56,20 @@ async def main_async() -> None:
             # We need separate aggregators to avoid bottleneck
             aggregator = Aggregator(broadcaster, storage, channel="linear")
 
-            # Temporary async function for on_ticker
-            async def on_ticker_temp(data: dict[str, Any]) -> None:
-                logger.info(f"Ticker log: {data}")
-
             # Create WebSocket client with pool support and connect to aggregator
-            websocket_client = WebSocketClient(
+            websocket_client = get_websocket_client(
                 channel="linear",
                 on_trade=aggregator.handle_trade,
-                on_kline=aggregator.handle_kline,
-                on_ticker=on_ticker_temp,
+                on_ticker=aggregator.handle_ticker,
             )
 
             if settings.enable_spot_stream:
                 # The same for spot data
                 spot_aggregator = Aggregator(broadcaster, storage, channel="spot")
 
-                spot_websocket_client = WebSocketClient(
+                spot_websocket_client = get_websocket_client(
                     channel="spot",
                     on_trade=spot_aggregator.handle_trade,
-                    on_kline=spot_aggregator.handle_kline,
                     on_ticker=spot_aggregator.handle_ticker,
                 )
 

@@ -4,9 +4,10 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import Any, Dict, List, Set, cast
+from typing import Any, Dict, Set, cast
 
 from streamer.broadcaster import Broadcaster
+from streamer.normalizer import normalizer
 from streamer.settings import settings
 from streamer.storage import Storage
 from streamer.types import Channel, Interval
@@ -27,9 +28,6 @@ class Aggregator:
         "_interval_ms_map",
         "_interval_str_ms_map",
         "_intervals_sorted",
-        "_klines_last_closed",
-        "_klines_store",
-        "_klines_total_symbols_count",
         "_min_interval_ms",
         "_running",
         "_storage",
@@ -41,6 +39,7 @@ class Aggregator:
         "_tickers_snapshots",
         "_timer_task",
         "_timer_ticks_count",
+        "_total_symbols_count",
         "_trades_buckets",
         "_trades_first_kline_skipped",
         "_trades_last_boundary",
@@ -69,6 +68,7 @@ class Aggregator:
         }
         self._intervals_sorted = tuple(sorted(self._interval_ms_map.values()))
         self._min_interval_ms = self._intervals_sorted[0]
+        self._total_symbols_count = len(settings.exchange_symbols)
 
         # Initialize trades mode state
         self._trades_buckets: Dict[str, Dict[int, Dict[int, Dict[str, Any]]]] = {}
@@ -78,11 +78,6 @@ class Aggregator:
         # For waiter mode
         self._trades_waiter_mode_enabled = settings.aggregator_waiter_mode_enabled
         self._trades_waiter_latency_ms = settings.aggregator_waiter_latency_ms
-
-        # Initialize klines mode state
-        self._klines_store: Dict[str, Dict[int, Dict[str, Any]]] = {}
-        self._klines_last_closed: Dict[int, Dict[int, List[Dict[str, Any]]]] = {}
-        self._klines_total_symbols_count = len(settings.exchange_symbols)
 
         # Initialize tickers state
         self._tickers_snapshots: dict[str, dict[str, Any]] = {}
@@ -155,9 +150,9 @@ class Aggregator:
             if extra:
                 logger.info("Additional config: %s", ", ".join(extra))
 
-    async def handle_trade(self, message: Dict[str, Any]) -> None:
+    async def handle_trade(self, raw_message: Dict[str, Any]) -> None:
         """Handle trade event and update OHLC buckets per bucket_start."""
-        trades_data = message["data"]
+        trades_data = normalizer.handle_trade(raw_message, self._channel)
         trades_buckets = self._trades_buckets
         trades_last_close = self._trades_last_close
         trades_last_boundary = self._trades_last_boundary
@@ -226,59 +221,15 @@ class Aggregator:
         if settings.enable_trades_stream:
             await self._broadcaster.consume(self._channel, "trades", trades_data)
 
-    async def handle_kline(self, message: Dict[str, Any]) -> None:
-        """Handle incoming kline and update store."""
-        kline_topic = message["topic"]
-
-        # Parse topic components
-        try:
-            _, interval_str, kline_symbol = kline_topic.split(".")
-            interval_ms = self._interval_str_ms_map[interval_str]
-        except Exception as e:
-            logger.error(
-                "Malformed kline topic: %s, error: %s",
-                kline_topic,
-                e,
-            )
-            return
-
-        # Get kline data
-        kline_messages = message["data"]
-        if not kline_messages:
-            return
-
-        # Get storage references
-        klines_store = self._klines_store
-        klines_last_closed = self._klines_last_closed
-
-        # Get or create symbol storage
-        symbol_storage = klines_store.get(kline_symbol)
-        if symbol_storage is None:
-            symbol_storage = {}
-            klines_store[kline_symbol] = symbol_storage
-
-        # Get or create closed klines storage for this interval
-        closed_klines_store = klines_last_closed.get(interval_ms)
-        if closed_klines_store is None:
-            closed_klines_store = {}
-            klines_last_closed[interval_ms] = closed_klines_store
-
-        # Process each kline message
-        for kline_msg in kline_messages:
-            kline_msg["symbol"] = kline_symbol
-
-            if kline_msg["confirm"]:
-                # Store confirmed kline in closed store
-                kline_start = kline_msg["start"]
-                if kline_start not in closed_klines_store:
-                    closed_klines_store[kline_start] = []
-                closed_klines_store[kline_start].append(kline_msg)
-            else:
-                # Update symbol storage with unconfirmed kline
-                symbol_storage[interval_ms] = kline_msg
-
-    async def handle_ticker(self, message: Dict[str, Any]) -> None:
+    async def handle_ticker(self, raw_message: Dict[str, Any]) -> None:
         """Handle ticker event and update all related streams."""
+        # Get references for faster access
+        broadcaster = self._broadcaster
+        storage = self._storage
+        channel = self._channel
+
+        message = normalizer.handle_ticker(raw_message, channel)
+
         ticker_topic = message["topic"]
 
         # Extract symbol from topic
@@ -306,17 +257,8 @@ class Aggregator:
             )
         )
 
-        # Get references for faster access
-        broadcaster = self._broadcaster
-        storage = self._storage
-        channel = self._channel
-
         # Calculate broadcast price
-        broadcast_price = (
-            ticker_snapshot["markPrice"]
-            if channel == "linear"
-            else ticker_snapshot["lastPrice"]
-        )
+        broadcast_price = ticker_snapshot["currentPrice"]
 
         # Broadcast ticker data if enabled
         if settings.enable_ticker_stream:
@@ -672,7 +614,7 @@ class Aggregator:
 
         # Publish closed klines if any
         if closed_klines:
-            total_symbols = self._klines_total_symbols_count
+            total_symbols = self._total_symbols_count
             channel_name = self._channel
             logger.info(
                 "Closing %s/%s klines at boundary %s in channel %s; "
@@ -758,7 +700,7 @@ class Aggregator:
 
         # Publish closed ticker klines if any
         if closed_ticker_klines:
-            total_symbols = self._klines_total_symbols_count
+            total_symbols = self._total_symbols_count
             channel_name = self._channel
             logger.info(
                 "Closing %s/%s ticker klines at boundary %s in channel %s; "
@@ -919,59 +861,3 @@ class Aggregator:
                 kline_data[field_name] = dict(bucket[field_name])
 
         return kline_data
-
-    async def _wait_klines(self, boundary_ms: int) -> None:
-        """Wait for all closed klines, then publish."""
-        # Get references for faster access
-        klines_last_closed = self._klines_last_closed
-        intervals_sorted = self._intervals_sorted
-        total_symbols = self._klines_total_symbols_count
-        channel_name = self._channel
-
-        collected_klines: list[dict[str, Any]] = []
-
-        for interval_ms in intervals_sorted:
-            # Skip intervals that don't align with boundary
-            if boundary_ms % interval_ms != 0:
-                continue
-
-            start_boundary = boundary_ms - interval_ms
-            wait_time = 0.0
-
-            # Wait for all symbols to be available
-            while True:
-                interval_closed_store = klines_last_closed.setdefault(interval_ms, {})
-                available_klines = interval_closed_store.get(start_boundary, [])
-
-                if len(available_klines) >= total_symbols:
-                    break
-
-                if wait_time >= KLINE_MAX_WAIT_TIME:
-                    logger.warning(
-                        "_wait_klines timeout: Received %s/%s symbols for interval %s "
-                        "at start=%s; continuing with available.",
-                        len(available_klines),
-                        total_symbols,
-                        interval_ms,
-                        start_boundary,
-                    )
-                    break
-
-                await asyncio.sleep(KLINE_SLEEP_TIME)
-                wait_time += KLINE_SLEEP_TIME
-
-            # Collect available klines for this interval
-            interval_klines = klines_last_closed[interval_ms].pop(start_boundary, [])
-            if interval_klines:
-                collected_klines.extend(interval_klines)
-
-        # Publish collected klines if any
-        if collected_klines:
-            logger.info(
-                "Collect %s closed klines at boundary %s in channel %s",
-                len(collected_klines),
-                boundary_ms,
-                channel_name,
-            )
-            await self._broadcaster.consume(channel_name, "klines", collected_klines)
-            await self._storage.process_klines(channel_name, collected_klines)
