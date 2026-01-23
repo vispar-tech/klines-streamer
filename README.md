@@ -1,14 +1,14 @@
-# Bybit Streamer
+# Klines Streamer
 
-A Python service that streams real-time market data from Bybit WebSocket API including trades, klines, tickers, and prices. Supports multiple channels (linear/spot), aggregation modes, and extensible consumers.
+A multi-exchange Python service that streams real-time market data from various cryptocurrency exchanges via WebSocket APIs. Due to Python's GIL limitations, each exchange runs in its own Docker container for optimal performance.
 
 **Key features:**
 
+-   Multi-exchange support: configurable exchange connectors
 -   Real-time streaming: trades, klines, tickers, prices
--   Multi-channel support: linear perpetuals and spot markets
--   Configurable aggregation modes (trade-based or kline-based)
+-   Containerized architecture: each exchange in separate container
 -   Extensible consumers: Redis, WebSocket, console, file storage, or your own
--   `.env` config with type-safe validation
+-   `.env` config with type-safe validation per exchange
 -   Asyncio architecture with structured logging
 
 ---
@@ -18,40 +18,80 @@ A Python service that streams real-time market data from Bybit WebSocket API inc
 **1. Clone & Install:**
 
 ```bash
-git clone https://github.com/vispar-tech/bybit-klines-streamer.git
-cd bybit-klines-streamer
+git clone https://github.com/vispar-tech/klines-streamer.git
+cd klines-streamer
 poetry install
 cp .env.example .env
 ```
 
-**2. Run locally:**
+**2. Configure exchange:**
+
+Each container supports only one exchange due to Python GIL limitations. Create separate `.env` files for each exchange:
 
 ```bash
-poetry run python -m streamer
+# For Bybit streamer
+cp .env.example .env.bybit
+# Edit .env.bybit with Bybit-specific settings
+
+# For Binance streamer
+cp .env.example .env.binance
+# Edit .env.binance with Binance-specific settings
 ```
 
-**Or with Docker Compose:**
+**3. Run locally:**
+
+For development, run single exchange locally:
 
 ```bash
-docker-compose up --build
+# Run Bybit streamer
+STREAMER_EXCHANGE=bybit poetry run python -m streamer
+
+# Run Binance streamer
+STREAMER_EXCHANGE=binance poetry run python -m streamer
+```
+
+**Or with Docker Compose (recommended):**
+
+Each exchange runs in its own dedicated container:
+
+```bash
+# Run Bybit streamer
+docker-compose --env-file .env.bybit up --build streamer-bybit
+
+# Run Binance streamer
+docker-compose --env-file .env.binance up --build streamer-binance
+
+# Run multiple exchanges simultaneously
+docker-compose --env-file .env.bybit up --build streamer-bybit &
+docker-compose --env-file .env.binance up --build streamer-binance &
 ```
 
 ---
 
 ## .env Configuration
 
-Edit `.env` for consumers, connection, and intervals:
+Create separate `.env` files for each exchange (e.g., `.env.bybit`, `.env.binance`). Each container loads only one exchange configuration:
+
+### Exchange-Specific Settings
 
 ```
-# Bybit Configuration
-STREAMER_BYBIT_SYMBOLS=BTCUSDT,ETHUSDT
-STREAMER_BYBIT_LOAD_ALL_SYMBOLS=false
-STREAMER_BYBIT_SYMBOLS_LIMIT=
-STREAMER_BYBIT_SOCKET_POOL_SIZE=100
+# Exchange Selection (required for each container)
+STREAMER_EXCHANGE=bybit  # or 'binance', 'okx', etc.
+
+# Exchange Symbols Configuration
+STREAMER_EXCHANGE_SYMBOLS=BTCUSDT,ETHUSDT
+STREAMER_EXCHANGE_LOAD_ALL_SYMBOLS=false
+STREAMER_EXCHANGE_SYMBOLS_LIMIT=
+STREAMER_EXCHANGE_SOCKET_POOL_SIZE=100
+
+# Kline Intervals
 STREAMER_KLINE_INTERVALS=1m,5m,1h,4h,1D
 STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true
-STREAMER_KLINES_MODE=false
+```
 
+### Global Settings (shared across all containers)
+
+```
 # Streaming Configuration
 STREAMER_ENABLE_KLINES_STREAM=true
 STREAMER_ENABLE_PRICE_STREAM=false
@@ -59,25 +99,25 @@ STREAMER_ENABLE_TICKER_STREAM=false
 STREAMER_ENABLE_TRADES_STREAM=false
 STREAMER_ENABLE_SPOT_STREAM=false
 
-# Redis Configuration
-STREAMER_REDIS_HOST=
-STREAMER_REDIS_PORT=
+# Consumer Configuration
+STREAMER_ENABLED_CONSUMERS=redis,websocket,console,file
+
+# Redis Configuration (shared across exchanges)
+STREAMER_REDIS_HOST=redis-host
+STREAMER_REDIS_PORT=6379
 STREAMER_REDIS_USER=
 STREAMER_REDIS_PASSWORD=
-STREAMER_REDIS_BASE=
-STREAMER_REDIS_MAIN_KEY=
+STREAMER_REDIS_BASE=0
+STREAMER_REDIS_MAIN_KEY=market-data
 
 # WebSocket Server Configuration
-STREAMER_WEBSOCKET_HOST=
+STREAMER_WEBSOCKET_HOST=0.0.0.0
 STREAMER_WEBSOCKET_PORT=9500
-STREAMER_WEBSOCKET_PATH=
+STREAMER_WEBSOCKET_PATH=/
 
 # WebSocket Authentication (required for WSS output)
 STREAMER_WSS_AUTH_KEY=your_secret_key
-STREAMER_WSS_AUTH_USER=
-
-# Consumer Configuration
-STREAMER_ENABLED_CONSUMERS=redis,websocket,console,file
+STREAMER_WSS_AUTH_USER=admin
 
 # Storage Configuration
 STREAMER_STORAGE_ENABLED=false
@@ -89,23 +129,13 @@ STREAMER_LOG_LEVEL=INFO
 STREAMER_LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
 STREAMER_LOG_FILE=
 
-# If use traefik docker-compose and websocket
+# Traefik Configuration (if using traefik docker-compose)
 STREAMER_HOST=your-domain.com
 ```
 
-> **WSS output:** You must set `STREAMER_WSS_AUTH_KEY` and `STREAMER_WSS_AUTH_USER` to restrict client access.
+> **Important:** Each exchange container must have its own `STREAMER_EXCHANGE` setting and dedicated WebSocket port to avoid conflicts.
 
 ---
-
-## Streaming Modes
-
-### Aggregation Modes
-
--   **Trade-based aggregation** (`STREAMER_KLINES_MODE=false`): Builds klines from individual trades in real-time
-    -   Enable waiter mode: `STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true`
-    -   Tune latency (80-150ms): `STREAMER_AGGREGATOR_WAITER_LATENCY_MS=80`
-    -   May have slight delays compared to official Bybit klines
--   **Klines mode** (`STREAMER_KLINES_MODE=true`): Uses Bybit's official kline stream, more stable, but with ~1s latency
 
 ### Data Streams
 
@@ -124,10 +154,11 @@ Supports both linear perpetuals (`linear`) and spot (`spot`) markets via WebSock
 
 ### Klines Data
 
-Aggregated candlestick (OHLCV) data:
+Aggregated candlestick (OHLCV) data (exchange-agnostic format):
 
 ```json
 {
+    "exchange": "bybit",
     "channel": "spot",
     "data_type": "klines",
     "data": [
@@ -152,6 +183,7 @@ Full market ticker information:
 
 ```json
 {
+    "exchange": "bybit",
     "channel": "linear",
     "data_type": "ticker",
     "data": [
@@ -190,6 +222,7 @@ Spot ticker (simplified):
 
 ```json
 {
+    "exchange": "bybit",
     "channel": "spot",
     "data_type": "ticker",
     "data": [
@@ -214,6 +247,7 @@ Simplified price-only updates:
 
 ```json
 {
+    "exchange": "bybit",
     "channel": "linear",
     "data_type": "price",
     "data": [
@@ -231,6 +265,7 @@ Raw trade information:
 
 ```json
 {
+    "exchange": "bybit",
     "channel": "linear",
     "data_type": "trades",
     "data": [
@@ -254,6 +289,7 @@ Spot trades (batch):
 
 ```json
 {
+    "exchange": "bybit",
     "channel": "spot",
     "data_type": "trades",
     "data": [
@@ -296,15 +332,24 @@ Add `"my"` to `STREAMER_ENABLED_CONSUMERS` in `.env`.
 
 ## Architecture
 
-### Broadcaster
+### Multi-Exchange Containerized Design
 
-The `Broadcaster` component receives streaming data from multiple channels and distributes it to all registered consumers in parallel. It:
+Due to Python's Global Interpreter Lock (GIL), each cryptocurrency exchange runs in its own dedicated Docker container:
 
--   Receives data from WebSocket streams across channels (linear/spot)
+- **Exchange Isolation**: Each container handles exactly one exchange to maximize performance
+- **Independent Scaling**: Scale individual exchanges without affecting others
+- **Resource Management**: Better CPU utilization and memory management per exchange
+- **Fault Tolerance**: Exchange failures are isolated to their specific containers
+
+### Broadcaster per Exchange
+
+Each exchange container has its own `Broadcaster` component that:
+
+-   Receives streaming data from the exchange's WebSocket API
 -   Supports multiple data types: klines, tickers, prices, trades
 -   Forwards data to all enabled consumers simultaneously using `asyncio.gather`
 -   Logs broadcasting activity (with spam protection for frequent updates)
--   Handles consumer errors individually without affecting others
+-   Handles consumer errors individually without affecting the exchange stream
 
 ### Storage
 
@@ -328,16 +373,24 @@ The `FileConsumer` saves streaming data to organized file structure with automat
 -   **Automatic Cleanup**: Removes files older than 4 hours every 5 minutes to prevent disk space issues
 -   **Concurrent Safe**: Each `consume()` call creates a new file, ensuring no conflicts
 
-Example file structure:
+Example file structure (organized by exchange):
 
 ```
 output/file_consumer/
-├── 2026/
-│   └── 01/
-│       └── 12/
-│           └── 15/
-│               ├── 20260112_150000_118938_linear_klines.jsonl
-│               └── 20260112_150005_234567_spot_ticker.jsonl
+├── bybit/
+│   └── 2026/
+│       └── 01/
+│           └── 12/
+│               └── 15/
+│                   ├── 20260112_150000_118938_linear_klines.jsonl
+│                   └── 20260112_150005_234567_spot_ticker.jsonl
+├── binance/
+│   └── 2026/
+│       └── 01/
+│           └── 12/
+│               └── 15/
+│                   ├── 20260112_150000_118938_spot_klines.jsonl
+│                   └── 20260112_150005_234567_futures_ticker.jsonl
 ```
 
 ---
@@ -345,9 +398,13 @@ output/file_consumer/
 ## Development
 
 -   **Quality:** Ruff (lint/format), MyPy (types), Black (format)
--   **Commands:**  
-     `make run` — start app  
-     `make check-all` — lint & type checks  
+-   **Multi-exchange development:**
+     - Each exchange has its own container and configuration
+     - Use separate `.env` files for different exchanges
+     - Test exchanges independently during development
+-   **Commands:**
+     `make run` — start single exchange app
+     `make check-all` — lint & type checks
      `pre-commit run --all-files` — run hooks
 
 ---

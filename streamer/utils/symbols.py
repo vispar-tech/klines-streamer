@@ -131,9 +131,11 @@ async def validate_settings_symbols() -> None:
 
     This should be called after settings initialization to handle async operations.
     """
-    if settings.bybit_load_all_symbols:
+    if settings.exchange_load_all_symbols:
         # Load all symbols from Bybit API
-        settings.bybit_symbols = await load_all_symbols(settings.bybit_symbols_limit)
+        settings.exchange_symbols = await load_all_symbols(
+            settings.exchange_symbols_limit
+        )
     else:
         # Validate provided symbols
-        settings.bybit_symbols = await validate_symbols(settings.bybit_symbols)
+        settings.exchange_symbols = await validate_symbols(settings.exchange_symbols)

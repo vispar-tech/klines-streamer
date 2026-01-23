@@ -7,25 +7,52 @@ networks:
     external: true
 
 services:
-  streamer:
+  streamer-bybit:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: streamer
+    container_name: streamer-bybit
     networks:
       - traefiktointernet
       - shared
     volumes:
-      - ./logs:/usr/src/logs
+      - ./logs/bybit:/usr/src/logs
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefiktointernet
 
-      - traefik.http.routers.streamer.entrypoints=websecure
-      - traefik.http.routers.streamer.rule=Host(`${STREAMER_HOST}`)
-      - traefik.http.routers.streamer.tls=true
-      - traefik.http.routers.streamer.tls.certresolver=letsencrypt
+      - traefik.http.routers.streamer-bybit.entrypoints=websecure
+      - traefik.http.routers.streamer-bybit.rule=Host(`${STREAMER_HOST}`) && Path(`/ws/bybit`)
+      - traefik.http.routers.streamer-bybit.tls=true
+      - traefik.http.routers.streamer-bybit.tls.certresolver=letsencrypt
 
-      - traefik.http.services.streamer.loadbalancer.server.port=${STREAMER_WEBSOCKET_PORT}
+      - traefik.http.services.streamer-bybit.loadbalancer.server.port=${STREAMER_WEBSOCKET_PORT}
     env_file:
-      - .env
+      - .env.bybit
+    environment:
+      - STREAMER_EXCHANGE=bybit
+
+  streamer-bingx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamer-bingx
+    networks:
+      - traefiktointernet
+      - shared
+    volumes:
+      - ./logs/bingx:/usr/src/logs
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefiktointernet
+
+      - traefik.http.routers.streamer-bingx.entrypoints=websecure
+      - traefik.http.routers.streamer-bingx.rule=Host(`${STREAMER_HOST}`) && Path(`/ws/bingx`)
+      - traefik.http.routers.streamer-bingx.tls=true
+      - traefik.http.routers.streamer-bingx.tls.certresolver=letsencrypt
+
+      - traefik.http.services.streamer-bingx.loadbalancer.server.port=${STREAMER_WEBSOCKET_PORT}
+    env_file:
+      - .env.bingx
+    environment:
+      - STREAMER_EXCHANGE=bingx

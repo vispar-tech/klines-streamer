@@ -33,27 +33,22 @@ class WebSocketClient:
             url: WebSocket URL for Bybit
             pool_size: Number of concurrent WebSocket connections to use
         """
-        self.symbols = settings.bybit_symbols
+        self.symbols = settings.exchange_symbols
         self.on_trade = on_trade
         self.on_kline = on_kline
         self.on_ticker = on_ticker
 
         self.url = f"wss://stream.bybit.com/v5/public/{channel}"
-        self.pool_size = settings.bybit_socket_pool_size
+        self.pool_size = settings.exchange_socket_pool_size
 
         self.channel = channel  # store channel for logs
 
         self.topic: str | None = None
         self.ticker_topic: str | None = None
 
-        if settings.klines_mode:
-            self.topic_part = "kline."
-            if settings.enable_klines_stream:
-                self.topic = "kline.{interval}.{symbol}"
-        else:
-            self.topic_part = "publicTrade."
-            if settings.enable_klines_stream or settings.enable_trades_stream:
-                self.topic = "publicTrade.{symbol}"
+        self.topic_part = "publicTrade."
+        if settings.enable_klines_stream or settings.enable_trades_stream:
+            self.topic = "publicTrade.{symbol}"
 
         self.ticker_topic_part = "tickers."
         if (
@@ -193,14 +188,8 @@ class WebSocketClient:
     async def _subscribe(self, websocket: ClientConnection, symbols: Set[str]) -> None:
         """Subscribe to streams for assigned symbols (including tickers)."""
         args: list[str] = []
-        # Add main stream topics (kline or trades)
-        if settings.klines_mode and self.topic:
-            args += [
-                self.topic.format(symbol=symbol, interval=interval.to_bybit())
-                for interval in settings.kline_intervals
-                for symbol in symbols
-            ]
-        elif self.topic:
+        # Add main stream topics (trades)
+        if self.topic:
             args += [self.topic.format(symbol=symbol) for symbol in symbols]
         # Always add tickers.{symbol} for each symbol
         if self.ticker_topic:
@@ -254,11 +243,8 @@ class WebSocketClient:
                 await self.on_ticker(data)
                 return
 
-            if settings.klines_mode:
-                await self.on_kline(data)
-            else:
-                # Handle trade data
-                await self.on_trade(data)
+            # Handle trade data
+            await self.on_trade(data)
 
         except orjson.JSONDecodeError as e:
             logger.error(

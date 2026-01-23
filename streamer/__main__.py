@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import sys
-from typing import List
+from typing import Any, List
 
 from streamer.aggregator import Aggregator
 from streamer.broadcaster import Broadcaster
@@ -33,7 +33,7 @@ async def main_async() -> None:
         await validate_settings_symbols()
 
         # Validate configuration
-        logger.info(f"Configured symbols: {settings.bybit_symbols}")
+        logger.info(f"Configured symbols: {settings.exchange_symbols}")
         logger.info(f"Configured intervals: {list(map(str, settings.kline_intervals))}")
         logger.info(f"Enabled consumers: {settings.enabled_consumers}")
 
@@ -56,12 +56,16 @@ async def main_async() -> None:
             # We need separate aggregators to avoid bottleneck
             aggregator = Aggregator(broadcaster, storage, channel="linear")
 
+            # Temporary async function for on_ticker
+            async def on_ticker_temp(data: dict[str, Any]) -> None:
+                logger.info(f"Ticker log: {data}")
+
             # Create WebSocket client with pool support and connect to aggregator
             websocket_client = WebSocketClient(
                 channel="linear",
                 on_trade=aggregator.handle_trade,
                 on_kline=aggregator.handle_kline,
-                on_ticker=aggregator.handle_ticker,
+                on_ticker=on_ticker_temp,
             )
 
             if settings.enable_spot_stream:

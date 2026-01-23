@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Sequence
 import aiohttp
 
 from streamer.consumers.base import BaseConsumer
-from streamer.settings import settings
 from streamer.storage import Storage
 from streamer.types import Channel, DataType, Interval
 
@@ -56,14 +55,9 @@ class ValidatorConsumer(BaseConsumer):
         """
         For every local kline, compare basic fields to Bybit API's result.
 
-        Only run if active, on kline data, and not in klines_mode.
+        Only run if active and on kline data.
         """
-        if not (
-            self._is_running
-            and data
-            and data_type == "klines"
-            and not settings.klines_mode
-        ):
+        if not (self._is_running and data and data_type == "klines"):
             return
 
         session = self._session

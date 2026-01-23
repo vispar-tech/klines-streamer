@@ -1,7 +1,7 @@
 """Type definitions and utilities for the streamer package."""
 
 import re
-from typing import Any, ClassVar, Dict, Literal, Self, Union
+from typing import Any, ClassVar, Dict, Literal, Union
 
 Channel = Literal["linear", "spot"]
 DataType = Literal["klines", "trades", "ticker", "price", "tickers-klines"]
@@ -22,22 +22,6 @@ class Interval:
 
     Can also be constructed from integer milliseconds directly.
     """
-
-    _KLINES_MODE_AVAILABLE_INTERVALS: ClassVar[set[str]] = {
-        "1m",
-        "3m",
-        "5m",
-        "15m",
-        "30m",
-        "60m",
-        "120m",
-        "240m",
-        "360m",
-        "720m",
-        "1D",
-        "1W",
-        "1M",
-    }
 
     # Conversion factors to milliseconds
     _UNITS: ClassVar[Dict[str, int]] = {
@@ -121,11 +105,6 @@ class Interval:
         raise TypeError(
             f"Cannot convert value of type {type(value).__name__} to Interval"
         )
-
-    @classmethod
-    def get_klines_mode_available_intervals(cls) -> set[Self]:
-        """Get list of available intervals for klines mode."""
-        return {cls(x) for x in cls._KLINES_MODE_AVAILABLE_INTERVALS}
 
     def to_bybit(self) -> str:
         """Convert to Bybit interval string, or raise ValueError if unsupported."""

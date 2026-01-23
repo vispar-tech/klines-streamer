@@ -1,7 +1,7 @@
 [project]
-name = "bybit-klines-streamer"
+name = "klines-streamer"
 version = "0.1.0"
-description = "A service that aggregates closed candles (klines) from Bybit trade streams, normalizes them, and delivers to multiple channels (Redis, WebSocket, etc.) via pluggable consumers."
+description = "A multi-exchange service that aggregates closed candles (klines) from cryptocurrency exchange trade streams, normalizes them, and delivers to multiple channels (Redis, WebSocket, etc.) via pluggable consumers."
 authors = [{ name = "Daniil Pavlovich", email = "layred.dota2@mail.ru" }]
 license = "MIT"
 readme = "README.md"
@@ -20,8 +20,8 @@ dependencies = [
 
 [tool.poetry]
 include = ["LICENSE"]
-homepage = "https://github.com/vispar-tech/bybit-klines-streamer"
-repository = "https://github.com/vispar-tech/bybit-klines-streamer"
+homepage = "https://github.com/vispar-tech/klines-streamer"
+repository = "https://github.com/vispar-tech/klines-streamer"
 packages = [
     { include = "streamer" }
 ]
@@ -74,8 +74,7 @@ select = [
     "PTH",
     "ERA",
     "PLR",
-    "RUF",
-    "TC"
+    "RUF"
 
 ]
 ignore = [

@@ -1,17 +1,33 @@
 version: "3"
 
 services:
-  streamer:
+  streamer-bybit:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: streamer
-    volumes:
-      - ./logs:/usr/src/logs
-    env_file:
-      - .env
+    container_name: streamer-bybit
     networks:
       - shared
+    volumes:
+      - ./logs/bybit:/usr/src/logs
+    env_file:
+      - .env.bybit
+    environment:
+      - STREAMER_EXCHANGE=bybit
+
+  streamer-bingx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamer-bingx
+    networks:
+      - shared
+    volumes:
+      - ./logs/bingx:/usr/src/logs
+    env_file:
+      - .env.bingx
+    environment:
+      - STREAMER_EXCHANGE=bingx
 
 networks:
   shared:

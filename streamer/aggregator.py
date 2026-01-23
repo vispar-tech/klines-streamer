@@ -82,7 +82,7 @@ class Aggregator:
         # Initialize klines mode state
         self._klines_store: Dict[str, Dict[int, Dict[str, Any]]] = {}
         self._klines_last_closed: Dict[int, Dict[int, List[Dict[str, Any]]]] = {}
-        self._klines_total_symbols_count = len(settings.bybit_symbols)
+        self._klines_total_symbols_count = len(settings.exchange_symbols)
 
         # Initialize tickers state
         self._tickers_snapshots: dict[str, dict[str, Any]] = {}
@@ -110,8 +110,8 @@ class Aggregator:
 
         # Prepare basic info
         interval_str = ",".join(str(i) for i in sorted(intervals))
-        symbols_count = len(settings.bybit_symbols)
-        mode_str = "klines" if settings.klines_mode else "trades"
+        symbols_count = len(settings.exchange_symbols)
+        mode_str = "trades"
         storage_str = "enabled" if settings.storage_enabled else "disabled"
 
         # Build streams list
@@ -129,7 +129,7 @@ class Aggregator:
 
         # Build mode details
         waiter_info = ""
-        if not settings.klines_mode and self._trades_waiter_mode_enabled:
+        if self._trades_waiter_mode_enabled:
             waiter_info = f" (waiter: {self._trades_waiter_latency_ms}ms)"
 
         # Log main info
@@ -522,7 +522,6 @@ class Aggregator:
         waiter_enabled = self._trades_waiter_mode_enabled
         waiter_latency_ms = self._trades_waiter_latency_ms
         tickers_enabled = settings.enable_tickers_kline_stream
-        klines_mode = settings.klines_mode
 
         try:
             while self._running:
@@ -544,17 +543,14 @@ class Aggregator:
                     await self._close_tickers_klines(next_boundary)
 
                 # Additional waiter delay for trades mode
-                if waiter_enabled and not klines_mode:
+                if waiter_enabled:
                     await asyncio.sleep(waiter_latency_ms / 1000)
 
                 # Increment tick counter
                 self._timer_ticks_count += 1
 
                 # Close appropriate klines based on mode
-                if klines_mode:
-                    await self._wait_klines(next_boundary)
-                else:
-                    await self._close_klines(next_boundary)
+                await self._close_klines(next_boundary)
 
         except asyncio.CancelledError:
             raise
