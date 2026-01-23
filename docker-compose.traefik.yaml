@@ -3,6 +3,8 @@ version: "3"
 networks:
   traefiktointernet:
     external: true
+  shared:
+    external: true
 
 services:
   streamer:
@@ -12,6 +14,7 @@ services:
     container_name: streamer
     networks:
       - traefiktointernet
+      - shared
     volumes:
       - ./logs:/usr/src/logs
     labels:

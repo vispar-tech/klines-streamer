@@ -14,7 +14,8 @@ dependencies = [
     "aiohttp (>=3.13.2,<4.0.0)",
     "pydantic (>=2.12.5,<3.0.0)",
     "redis (>=4.5.0,<6.0.0)",
-    "aiofiles (>=25.1.0,<26.0.0)"
+    "aiofiles (>=25.1.0,<26.0.0)",
+    "yarl (>=1.22.0,<2.0.0)"
 ]
 
 [tool.poetry]
@@ -85,14 +86,12 @@ unfixable = []
 pydocstyle = { convention = "pep257", ignore-decorators = ["typing.overload"] }
 isort = { force-single-line = false, known-first-party = ["streamer"] }
 pylint = { allow-magic-value-types = ["int", "str", "float", "bytes"], max-args = 7 }
+mccabe = {max-complexity = 14}
 
 [tool.ruff.lint.per-file-ignores]
 "examples/*" = [
     "T201",
 ]
-
-
-
 
 [tool.ruff.format]
 quote-style = "double"

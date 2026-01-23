@@ -7,7 +7,7 @@ A Python service that streams real-time market data from Bybit WebSocket API inc
 -   Real-time streaming: trades, klines, tickers, prices
 -   Multi-channel support: linear perpetuals and spot markets
 -   Configurable aggregation modes (trade-based or kline-based)
--   Extensible consumers: Redis, WebSocket, console, storage, or your own
+-   Extensible consumers: Redis, WebSocket, console, file storage, or your own
 -   `.env` config with type-safe validation
 -   Asyncio architecture with structured logging
 
@@ -60,7 +60,11 @@ STREAMER_ENABLE_TRADES_STREAM=false
 STREAMER_ENABLE_SPOT_STREAM=false
 
 # Redis Configuration
-STREAMER_REDIS_URL=
+STREAMER_REDIS_HOST=
+STREAMER_REDIS_PORT=
+STREAMER_REDIS_USER=
+STREAMER_REDIS_PASSWORD=
+STREAMER_REDIS_BASE=
 STREAMER_REDIS_MAIN_KEY=
 
 # WebSocket Server Configuration
@@ -73,7 +77,7 @@ STREAMER_WSS_AUTH_KEY=your_secret_key
 STREAMER_WSS_AUTH_USER=
 
 # Consumer Configuration
-STREAMER_ENABLED_CONSUMERS=redis,websocket,console
+STREAMER_ENABLED_CONSUMERS=redis,websocket,console,file
 
 # Storage Configuration
 STREAMER_STORAGE_ENABLED=false
@@ -313,6 +317,28 @@ When `STREAMER_STORAGE_ENABLED=true`, the `Storage` component acts as a consumer
     -   `{main_key}:price:{channel}` - hash with current prices per symbol
     -   `{main_key}:last-closed:{channel}:{interval}` - klines data with TTL expiration
 -   **Initialization**: Cleans existing keys on startup for consistent state
+
+### File Consumer
+
+The `FileConsumer` saves streaming data to organized file structure with automatic cleanup:
+
+-   **Directory Structure**: Organizes files by date/time: `output/file_consumer/YYYY/MM/DD/HH/`
+-   **File Naming**: Uses timestamp-based filenames: `YYYYMMDD_HHMMSS_mmmmmm_{channel}_{data_type}.jsonl`
+-   **Data Format**: Saves data as JSON Lines with metadata (channel, data_type, timestamp)
+-   **Automatic Cleanup**: Removes files older than 4 hours every 5 minutes to prevent disk space issues
+-   **Concurrent Safe**: Each `consume()` call creates a new file, ensuring no conflicts
+
+Example file structure:
+
+```
+output/file_consumer/
+├── 2026/
+│   └── 01/
+│       └── 12/
+│           └── 15/
+│               ├── 20260112_150000_118938_linear_klines.jsonl
+│               └── 20260112_150005_234567_spot_ticker.jsonl
+```
 
 ---
 
