@@ -31,7 +31,7 @@ class BybitWebSocketClient(WebSocketClient):
         self.ticker_topic: str | None = None
 
         self.topic_part = "publicTrade."
-        if settings.enable_klines_stream or settings.enable_trades_stream:
+        if settings.enable_klines_stream:
             self.topic = "publicTrade.{symbol}"
 
         self.ticker_topic_part = "tickers."

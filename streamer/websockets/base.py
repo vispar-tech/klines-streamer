@@ -63,20 +63,23 @@ class WebSocketClient(ABC):
 
         # Distribute symbols across sockets
         distributed_symbols = self._distribute_symbols(self.symbols)
+        total_pool_size = len(distributed_symbols)
+        if total_pool_size != self.pool_size:
+            logger.info(
+                f"Adjust pool size {self.pool_size} -> {total_pool_size} "
+                f"on channel {self.channel}"
+            )
 
         # Create and start all sockets concurrently
         socket_tasks: List[asyncio.Task[None]] = []
         for i, socket_symbols in enumerate(distributed_symbols):
+            if len(socket_symbols) == 0:
+                continue
+
             logger.info(
-                f"Creating socket {i + 1}/{self.pool_size} "
+                f"Creating socket {i + 1}/{total_pool_size} "
                 f"with {len(socket_symbols)} symbols on channel {self.channel}"
             )
-            if len(socket_symbols) == 0:
-                logger.warning(
-                    f"No symbols for socket {i + 1}/{self.pool_size} "
-                    f"on channel {self.channel}"
-                )
-                continue
 
             # Start socket as background task
             task = asyncio.create_task(self._run_socket(i, socket_symbols))
@@ -123,7 +126,7 @@ class WebSocketClient(ABC):
         for i, symbol in enumerate(symbols):
             distributed[i % self.pool_size].add(symbol)
 
-        return distributed
+        return list(filter(lambda symbols: len(symbols), distributed))
 
     async def _run_socket(self, socket_id: int, symbols: Set[str]) -> None:
         """Run a single WebSocket connection."""

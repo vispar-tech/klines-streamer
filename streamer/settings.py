@@ -25,7 +25,6 @@ class Settings(BaseSettings):
     enable_price_stream: bool = False
     enable_ticker_stream: bool = False
     enable_tickers_kline_stream: bool = False
-    enable_trades_stream: bool = False
     enable_spot_stream: bool = False
 
     # Redis configuration
@@ -55,9 +54,6 @@ class Settings(BaseSettings):
     # Aggregator configuration
     aggregator_waiter_mode_enabled: bool = True
     aggregator_waiter_latency_ms: int = 80
-
-    # Storage configuration
-    storage_enabled: bool = False
 
     # Logging configuration
     log_level: str = "INFO"
@@ -112,13 +108,12 @@ class Settings(BaseSettings):
             self.enable_price_stream,
             self.enable_ticker_stream,
             self.enable_tickers_kline_stream,
-            self.enable_trades_stream,
         ]
         if not any(enabled_flags):
             raise ValueError(
                 "At least one of 'enable_klines_stream', "
                 "'enable_price_stream', 'enable_ticker_stream', "
-                "'enable_tickers_kline_stream', or 'enable_trades_stream' "
+                "'enable_tickers_kline_stream' "
                 "must be enabled."
             )
 
@@ -150,7 +145,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         env_prefix="STREAMER_",
-        extra="forbid",
+        extra="ignore",
     )
 
 

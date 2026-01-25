@@ -45,9 +45,6 @@ class Storage:
         This is run from __init__ (not async). Redis connection object can be created,
         but will actually open socket only on the first command.
         """
-        if not settings.storage_enabled:
-            return
-
         if not settings.redis_url:
             raise ValueError("REDIS_URL is required when storage is enabled")
 
@@ -81,9 +78,6 @@ class Storage:
         price: float,
     ) -> None:
         """Broadcast ticker, store in Redis, and notify pubsub."""
-        if not settings.storage_enabled:
-            return
-
         redis = self.redis
         if redis is None:
             logger.error("Storage: Redis connection is not initialized")
@@ -127,9 +121,6 @@ class Storage:
 
         Each interval has its own key under the channel.
         """
-        if not settings.storage_enabled:
-            return
-
         redis = self.redis
         if redis is None:
             logger.error("Storage: Redis connection is not initialized")
@@ -160,9 +151,6 @@ class Storage:
 
         Each interval has its own key under the channel with ticker kline prefix.
         """
-        if not settings.storage_enabled:
-            return
-
         redis = self.redis
         if redis is None:
             logger.error("Storage: Redis connection is not initialized")
@@ -194,9 +182,6 @@ class Storage:
         Returns:
             List of kline data from all intervals
         """
-        if not settings.storage_enabled:
-            return []
-
         redis = self.redis
         if redis is None:
             logger.error("Storage: Redis connection is not initialized")
@@ -227,9 +212,6 @@ class Storage:
         Returns:
             List of ticker kline data from all intervals
         """
-        if not settings.storage_enabled:
-            return []
-
         redis = self.redis
         if redis is None:
             logger.error("Storage: Redis connection is not initialized")

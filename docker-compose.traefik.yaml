@@ -16,18 +16,10 @@ services:
       - traefiktointernet
       - shared
     volumes:
-      - ./logs/bybit:/usr/src/logs
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefiktointernet
-
-      - traefik.http.routers.streamer-bybit.entrypoints=websecure
-      - traefik.http.routers.streamer-bybit.rule=Host(`${STREAMER_HOST}`) && Path(`/ws/bybit`)
-      - traefik.http.routers.streamer-bybit.tls=true
-      - traefik.http.routers.streamer-bybit.tls.certresolver=letsencrypt
-
-      - traefik.http.services.streamer-bybit.loadbalancer.server.port=${STREAMER_WEBSOCKET_PORT}
+      - ./logs:/usr/src/logs
+      - ./output/bybit:/usr/src/output
     env_file:
+      - .env
       - .env.bybit
     environment:
       - STREAMER_EXCHANGE=bybit
@@ -41,18 +33,40 @@ services:
       - traefiktointernet
       - shared
     volumes:
-      - ./logs/bingx:/usr/src/logs
+      - ./logs:/usr/src/logs
+      - ./output/bingx:/usr/src/output
+    env_file:
+      - .env
+      - .env.bingx
+    environment:
+      - STREAMER_EXCHANGE=bingx
+
+  streamer-proxy:
+    build:
+      context: .
+      dockerfile: proxy.Dockerfile
+    container_name: streamer-proxy
+    networks:
+      - traefiktointernet
+      - shared
+    volumes:
+      - ./logs:/usr/src/logs
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefiktointernet
 
-      - traefik.http.routers.streamer-bingx.entrypoints=websecure
-      - traefik.http.routers.streamer-bingx.rule=Host(`${STREAMER_HOST}`) && Path(`/ws/bingx`)
-      - traefik.http.routers.streamer-bingx.tls=true
-      - traefik.http.routers.streamer-bingx.tls.certresolver=letsencrypt
+      - traefik.http.routers.streamer-proxy.entrypoints=websecure
+      - traefik.http.routers.streamer-proxy.rule=Host(`${STREAMER_HOST}`)
+      - traefik.http.routers.streamer-proxy.tls=true
+      - traefik.http.routers.streamer-proxy.tls.certresolver=letsencrypt
 
-      - traefik.http.services.streamer-bingx.loadbalancer.server.port=${STREAMER_WEBSOCKET_PORT}
-    env_file:
-      - .env.bingx
+      - traefik.http.services.streamer-proxy.loadbalancer.server.port=${PROXY_WEBSOCKET_PORT}
     environment:
-      - STREAMER_EXCHANGE=bingx
+      - PROXY_UPSTREAM_CONNECTIONS=ws://streamer-bingx:${STREAMER_WEBSOCKET_PORT},ws://streamer-bybit:${STREAMER_WEBSOCKET_PORT}
+      - PROXY_WSS_AUTH_KEY=${STREAMER_WSS_AUTH_KEY}
+      - PROXY_WSS_AUTH_USER=${STREAMER_WSS_AUTH_USER}
+    env_file:
+      - .env
+    depends_on:
+      - streamer-bybit
+      - streamer-bingx

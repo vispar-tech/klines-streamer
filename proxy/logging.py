@@ -1,9 +1,9 @@
-"""Logging configuration for the streamer application."""
+"""Logging configuration for the proxy application."""
 
 import logging
 import sys
 
-from streamer.settings import settings
+from proxy.settings import settings
 
 
 def setup_logging() -> None:

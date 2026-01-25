@@ -7,7 +7,7 @@ repos:
             language: system
             types: [python]
             pass_filenames: false
-            args: ["streamer"]
+            args: ["streamer", "proxy"]
 
           - id: ruff-lint
             name: Check with Ruff
@@ -16,7 +16,7 @@ repos:
             types: [python]
             pass_filenames: false
             always_run: true
-            args: ["streamer", "--fix"]
+            args: ["streamer", "proxy", "--fix"]
 
           - id: mypy
             name: Validate types with MyPy
@@ -26,3 +26,4 @@ repos:
             pass_filenames: false
             args:
                 - "streamer"
+                - "proxy"

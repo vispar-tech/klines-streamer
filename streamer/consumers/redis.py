@@ -61,7 +61,12 @@ class RedisConsumer(BaseConsumer):
 
         try:
             message = orjson.dumps(
-                {"channel": channel, "data_type": data_type, "data": data}
+                {
+                    "exchange": settings.exchange,
+                    "channel": channel,
+                    "data_type": data_type,
+                    "data": data,
+                }
             ).decode("utf-8")
 
             if not settings.redis_main_key:

@@ -4,12 +4,12 @@ A multi-exchange Python service that streams real-time market data from various 
 
 **Key features:**
 
--   Multi-exchange support: configurable exchange connectors
--   Real-time streaming: trades, klines, tickers, prices
--   Containerized architecture: each exchange in separate container
--   Extensible consumers: Redis, WebSocket, console, file storage, or your own
--   `.env` config with type-safe validation per exchange
--   Asyncio architecture with structured logging
+- Multi-exchange support: configurable exchange connectors
+- Real-time streaming: trades, klines, tickers, prices
+- Containerized architecture: each exchange in separate container
+- Extensible consumers: Redis, WebSocket, console, file storage, or your own
+- `.env` config with type-safe validation per exchange
+- Asyncio architecture with structured logging
 
 ---
 
@@ -56,14 +56,17 @@ Each exchange runs in its own dedicated container:
 
 ```bash
 # Run Bybit streamer
-docker-compose --env-file .env.bybit up --build streamer-bybit
+docker-compose up --build streamer-bybit
 
 # Run Binance streamer
-docker-compose --env-file .env.binance up --build streamer-binance
+docker-compose up --build streamer-binance
 
 # Run multiple exchanges simultaneously
-docker-compose --env-file .env.bybit up --build streamer-bybit &
-docker-compose --env-file .env.binance up --build streamer-binance &
+docker-compose up --build streamer-bybit &
+docker-compose up --build streamer-binance &
+
+# Run unified proxy (aggregates data from all exchanges)
+docker-compose up --build streamer-proxy
 ```
 
 ---
@@ -96,7 +99,6 @@ STREAMER_AGGREGATOR_WAITER_MODE_ENABLED=true
 STREAMER_ENABLE_KLINES_STREAM=true
 STREAMER_ENABLE_PRICE_STREAM=false
 STREAMER_ENABLE_TICKER_STREAM=false
-STREAMER_ENABLE_TRADES_STREAM=false
 STREAMER_ENABLE_SPOT_STREAM=false
 
 # Consumer Configuration
@@ -119,11 +121,6 @@ STREAMER_WEBSOCKET_PATH=/
 STREAMER_WSS_AUTH_KEY=your_secret_key
 STREAMER_WSS_AUTH_USER=admin
 
-# Storage Configuration
-STREAMER_STORAGE_ENABLED=false
-STREAMER_STORAGE_BUFFER_FLUSH_SIZE=100
-STREAMER_STORAGE_BUFFER_FLUSH_INTERVAL=1.0
-
 # Logging Configuration
 STREAMER_LOG_LEVEL=INFO
 STREAMER_LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
@@ -141,10 +138,9 @@ STREAMER_HOST=your-domain.com
 
 Control which data types to stream using these settings:
 
--   `STREAMER_ENABLE_KLINES_STREAM=true`: Aggregate and stream kline (OHLCV) data
--   `STREAMER_ENABLE_TRADES_STREAM=false`: Stream raw trade data
--   `STREAMER_ENABLE_TICKER_STREAM=false`: Stream ticker snapshots and deltas
--   `STREAMER_ENABLE_PRICE_STREAM=false`: Stream price updates only
+- `STREAMER_ENABLE_KLINES_STREAM=true`: Aggregate and stream kline (OHLCV) data
+- `STREAMER_ENABLE_TICKER_STREAM=false`: Stream ticker snapshots and deltas
+- `STREAMER_ENABLE_PRICE_STREAM=false`: Stream price updates only
 
 ### Channels
 
@@ -345,33 +341,43 @@ Due to Python's Global Interpreter Lock (GIL), each cryptocurrency exchange runs
 
 Each exchange container has its own `Broadcaster` component that:
 
--   Receives streaming data from the exchange's WebSocket API
--   Supports multiple data types: klines, tickers, prices, trades
--   Forwards data to all enabled consumers simultaneously using `asyncio.gather`
--   Logs broadcasting activity (with spam protection for frequent updates)
--   Handles consumer errors individually without affecting the exchange stream
+- Receives streaming data from the exchange's WebSocket API
+- Supports multiple data types: klines, tickers, prices, trades
+- Forwards data to all enabled consumers simultaneously using `asyncio.gather`
+- Logs broadcasting activity (with spam protection for frequent updates)
+- Handles consumer errors individually without affecting the exchange stream
 
 ### Storage
 
-When `STREAMER_STORAGE_ENABLED=true`, the `Storage` component acts as a consumer that persists data to Redis:
+The `Storage` component acts as a consumer that persists data to Redis:
 
--   **Connection**: Establishes Redis connection using `STREAMER_REDIS_URL`
--   **Data Processing**: Maintains local snapshots per symbol, applies deltas for efficient updates
--   **Key Structure**: Uses configurable `STREAMER_REDIS_MAIN_KEY` (default: "bybit-streamer") as prefix:
-    -   `{main_key}:tickers:{channel}` - hash with full ticker snapshots per symbol
-    -   `{main_key}:price:{channel}` - hash with current prices per symbol
-    -   `{main_key}:last-closed:{channel}:{interval}` - klines data with TTL expiration
--   **Initialization**: Cleans existing keys on startup for consistent state
+- **Connection**: Establishes Redis connection using `STREAMER_REDIS_URL`
+- **Data Processing**: Maintains local snapshots per symbol, applies deltas for efficient updates
+- **Key Structure**: Uses configurable `STREAMER_REDIS_MAIN_KEY` (default: "bybit-streamer") as prefix:
+    - `{main_key}:tickers:{channel}` - hash with full ticker snapshots per symbol
+
+### Proxy Server
+
+The `proxy` component provides a unified WebSocket endpoint that aggregates data from multiple exchange containers:
+
+- **Multi-Source Aggregation**: Connects to multiple upstream WebSocket servers simultaneously
+- **Single Endpoint**: Provides one WebSocket URL for clients to access all exchange data
+- **Source Identification**: Adds `source` field to identify which exchange sent each message
+- **Authentication**: Uses same authentication as individual streamers
+- **Containerized**: Runs in its own Docker container with health checks
+    - `{main_key}:price:{channel}` - hash with current prices per symbol
+    - `{main_key}:last-closed:{channel}:{interval}` - klines data with TTL expiration
+- **Initialization**: Cleans existing keys on startup for consistent state
 
 ### File Consumer
 
 The `FileConsumer` saves streaming data to organized file structure with automatic cleanup:
 
--   **Directory Structure**: Organizes files by date/time: `output/file_consumer/YYYY/MM/DD/HH/`
--   **File Naming**: Uses timestamp-based filenames: `YYYYMMDD_HHMMSS_mmmmmm_{channel}_{data_type}.jsonl`
--   **Data Format**: Saves data as JSON Lines with metadata (channel, data_type, timestamp)
--   **Automatic Cleanup**: Removes files older than 4 hours every 5 minutes to prevent disk space issues
--   **Concurrent Safe**: Each `consume()` call creates a new file, ensuring no conflicts
+- **Directory Structure**: Organizes files by date/time: `output/file_consumer/YYYY/MM/DD/HH/`
+- **File Naming**: Uses timestamp-based filenames: `YYYYMMDD_HHMMSS_mmmmmm_{channel}_{data_type}.jsonl`
+- **Data Format**: Saves data as JSON Lines with metadata (channel, data_type, timestamp)
+- **Automatic Cleanup**: Removes files older than 4 hours every 5 minutes to prevent disk space issues
+- **Concurrent Safe**: Each `consume()` call creates a new file, ensuring no conflicts
 
 Example file structure (organized by exchange):
 
@@ -397,15 +403,15 @@ output/file_consumer/
 
 ## Development
 
--   **Quality:** Ruff (lint/format), MyPy (types), Black (format)
--   **Multi-exchange development:**
-     - Each exchange has its own container and configuration
-     - Use separate `.env` files for different exchanges
-     - Test exchanges independently during development
--   **Commands:**
-     `make run` — start single exchange app
-     `make check-all` — lint & type checks
-     `pre-commit run --all-files` — run hooks
+- **Quality:** Ruff (lint/format), MyPy (types), Black (format)
+- **Multi-exchange development:**
+    - Each exchange has its own container and configuration
+    - Use separate `.env` files for different exchanges
+    - Test exchanges independently during development
+- **Commands:**
+  `make run` — start single exchange app
+  `make check-all` — lint & type checks
+  `pre-commit run --all-files` — run hooks
 
 ---
 

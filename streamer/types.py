@@ -4,7 +4,7 @@ import re
 from typing import Any, ClassVar, Dict, Literal, Union
 
 Channel = Literal["linear", "spot"]
-DataType = Literal["klines", "trades", "ticker", "price", "tickers-klines"]
+DataType = Literal["klines", "ticker", "price", "tickers-klines"]
 
 
 class Interval:

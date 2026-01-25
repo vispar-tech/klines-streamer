@@ -31,9 +31,7 @@ class BingxWebSocketClient(WebSocketClient):
         super().__init__(channel, on_trade, on_ticker)
 
         # BingX uses @trade and @ticker suffixes, not prefixes
-        self.trade_enabled = (
-            settings.enable_klines_stream or settings.enable_trades_stream
-        )
+        self.trade_enabled = settings.enable_klines_stream
         self.ticker_enabled = (
             settings.enable_ticker_stream
             or settings.enable_price_stream

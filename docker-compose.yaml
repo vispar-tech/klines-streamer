@@ -9,8 +9,10 @@ services:
     networks:
       - shared
     volumes:
-      - ./logs/bybit:/usr/src/logs
+      - ./logs:/usr/src/logs
+      - ./output/bybit:/usr/src/output
     env_file:
+      - .env
       - .env.bybit
     environment:
       - STREAMER_EXCHANGE=bybit
@@ -23,11 +25,30 @@ services:
     networks:
       - shared
     volumes:
-      - ./logs/bingx:/usr/src/logs
+      - ./logs:/usr/src/logs
+      - ./output/bingx:/usr/src/output
     env_file:
+      - .env
       - .env.bingx
     environment:
       - STREAMER_EXCHANGE=bingx
+
+  streamer-proxy:
+    build:
+      context: .
+      dockerfile: proxy.Dockerfile
+    container_name: streamer-proxy
+    networks:
+      - shared
+    volumes:
+      - ./logs:/usr/src/logs
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      - streamer-bybit
+      - streamer-bingx
 
 networks:
   shared:

@@ -31,6 +31,13 @@ ruff = "^0.14.8"
 mypy = "^1.19.0"
 pre-commit = "^4.5.0"
 
+[tool.poetry.group.proxy.dependencies]
+websockets = "^15.0.1"
+orjson = "^3.11.5"
+pydantic-settings = "^2.12.0"
+pydantic = "^2.12.5"
+aiofiles = "^25.1.0"
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -41,10 +48,10 @@ implicit_reexport = false
 warn_unused_ignores = true
 warn_return_any = true
 namespace_packages = true
-files = ["streamer"]
+files = ["streamer", "proxy"]
 
 [tool.ruff]
-include = ["streamer/**/*.py"]
+include = ["streamer/**/*.py", "proxy/**/*.py"]
 line-length = 88
 fix = true
 unsafe-fixes = true
@@ -83,7 +90,7 @@ ignore = [
 fixable = ["ALL"]
 unfixable = []
 pydocstyle = { convention = "pep257", ignore-decorators = ["typing.overload"] }
-isort = { force-single-line = false, known-first-party = ["streamer"] }
+isort = { force-single-line = false, known-first-party = ["streamer", "proxy"] }
 pylint = { allow-magic-value-types = ["int", "str", "float", "bytes"], max-args = 7 }
 mccabe = {max-complexity = 14}
 

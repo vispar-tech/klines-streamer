@@ -107,7 +107,6 @@ class Aggregator:
         interval_str = ",".join(str(i) for i in sorted(intervals))
         symbols_count = len(settings.exchange_symbols)
         mode_str = "trades"
-        storage_str = "enabled" if settings.storage_enabled else "disabled"
 
         # Build streams list
         streams = [
@@ -116,7 +115,6 @@ class Aggregator:
                 (settings.enable_ticker_stream, "ticker"),
                 (settings.enable_price_stream, "price"),
                 (settings.enable_tickers_kline_stream, "tickers-klines"),
-                (settings.enable_trades_stream, "trades"),
             ]
             if flag
         ]
@@ -130,14 +128,13 @@ class Aggregator:
         # Log main info
         logger.info(
             "Aggregator initialized - channel: %s, symbols: %d, intervals: %s, "
-            "mode: %s%s, streams: %s, storage: %s",
+            "mode: %s%s, streams: %s",
             self._channel,
             symbols_count,
             interval_str,
             mode_str,
             waiter_info,
             streams_str,
-            storage_str,
         )
 
         # Log additional config if needed
@@ -217,9 +214,6 @@ class Aggregator:
                     existing_bucket["v"] += trade_volume
                     existing_bucket["n"] += 1
                     existing_bucket["c"] = trade_price
-
-        if settings.enable_trades_stream:
-            await self._broadcaster.consume(self._channel, "trades", trades_data)
 
     async def handle_ticker(self, raw_message: Dict[str, Any]) -> None:
         """Handle ticker event and update all related streams."""
@@ -497,12 +491,13 @@ class Aggregator:
         except asyncio.CancelledError:
             raise
 
-    async def _close_klines(self, boundary_ms: int) -> None:
+    async def _close_klines(self, boundary_ms: int) -> None:  # noqa: PLR0912
         """Close OHLC buckets and publish ready klines."""
         # Get references for faster access
         trades_buckets = self._trades_buckets
         trades_first_skipped = self._trades_first_kline_skipped
         trades_last_close = self._trades_last_close
+        trades_last_boundary = self._trades_last_boundary
         intervals_sorted = self._intervals_sorted
 
         closed_klines: list[dict[str, Any]] = []
@@ -514,6 +509,9 @@ class Aggregator:
             last_close_values = trades_last_close.setdefault(symbol, {})
 
             for interval_ms in intervals_sorted:
+                # Update boundary tracking
+                trades_last_boundary[interval_ms] = boundary_ms
+
                 interval_buckets = intervals.get(interval_ms)
 
                 # No buckets for this interval - create empty kline if possible
@@ -536,11 +534,11 @@ class Aggregator:
                         intervals_hit.add(interval_ms)
                     continue
 
-                # Find buckets ready to close (past boundary)
+                # Find buckets ready to close (exactly at boundary)
                 buckets_to_close = [
                     bucket_start
                     for bucket_start, bucket in interval_buckets.items()
-                    if bucket["end"] <= boundary_ms
+                    if bucket["end"] == boundary_ms
                 ]
                 if buckets_to_close:
                     intervals_hit.add(interval_ms)
@@ -612,6 +610,18 @@ class Aggregator:
                         }
                     )
 
+                # Clean up old buckets that are too far in the past
+                # (more than 10 intervals ago)
+                # to prevent memory leaks from stale data after reconnections
+                stale_cutoff = boundary_ms - (interval_ms * 10)
+                stale_buckets = [
+                    bucket_start
+                    for bucket_start, bucket in interval_buckets.items()
+                    if bucket["end"] < stale_cutoff
+                ]
+                for stale_bucket_start in stale_buckets:
+                    interval_buckets.pop(stale_bucket_start)
+
         # Publish closed klines if any
         if closed_klines:
             total_symbols = self._total_symbols_count
@@ -673,11 +683,11 @@ class Aggregator:
                         intervals_hit.add(interval_ms)
                     continue
 
-                # Find buckets ready to close (past boundary)
+                # Find buckets ready to close (exactly at boundary)
                 buckets_to_close = [
                     bucket_start
                     for bucket_start, bucket in interval_buckets.items()
-                    if bucket["end"] <= boundary_ms
+                    if bucket["end"] == boundary_ms
                 ]
 
                 if buckets_to_close:
@@ -697,6 +707,18 @@ class Aggregator:
                     )
                     if processed_bucket:
                         closed_ticker_klines.append(processed_bucket)
+
+                # Clean up old buckets that are too far in the past
+                # (more than 10 intervals ago)
+                # to prevent memory leaks from stale data after reconnections
+                stale_cutoff = boundary_ms - (interval_ms * 10)
+                stale_buckets = [
+                    bucket_start
+                    for bucket_start, bucket in interval_buckets.items()
+                    if bucket["end"] < stale_cutoff
+                ]
+                for stale_bucket_start in stale_buckets:
+                    interval_buckets.pop(stale_bucket_start)
 
         # Publish closed ticker klines if any
         if closed_ticker_klines:
