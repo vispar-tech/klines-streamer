@@ -12,7 +12,7 @@ from streamer.types import Interval
 class Settings(BaseSettings):
     """Application configuration settings."""
 
-    exchange: Literal["bingx", "bybit"] = Field(default=...)
+    exchange: Literal["bybit", "bingx", "bitget"] = Field(default=...)
     # Exchange configuration
     exchange_symbols: Annotated[set[str], NoDecode] = {"BTCUSDT", "ETHUSDT"}
     exchange_load_all_symbols: bool = False

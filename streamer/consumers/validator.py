@@ -138,8 +138,8 @@ class BaseValidator(BaseConsumer, ABC):
         self,
         channel: Channel,
         symbol: Any,
-        interval_ms: Any,
-        timestamp: Any,
+        interval_ms: int,
+        timestamp: int,
         session: aiohttp.ClientSession,
     ) -> Optional[list[int | float]]:
         """Fetch kline data from exchange API."""
@@ -195,8 +195,8 @@ class BybitValidator(BaseValidator):
         self,
         channel: Channel,
         symbol: Any,
-        interval_ms: Any,
-        timestamp: Any,
+        interval_ms: int,
+        timestamp: int,
         session: aiohttp.ClientSession,
     ) -> Optional[list[int | float]]:
         try:
@@ -232,8 +232,8 @@ class BingxValidator(BaseValidator):
         self,
         channel: Channel,
         symbol: Any,
-        interval_ms: Any,
-        timestamp: Any,
+        interval_ms: int,
+        timestamp: int,
         session: aiohttp.ClientSession,
     ) -> Optional[list[int | float]]:
         try:
@@ -261,12 +261,62 @@ class BingxValidator(BaseValidator):
             return None
 
 
+class BitgetValidator(BaseValidator):
+    """Validator for Bitget exchange API."""
+
+    BITGET_KLINE_ENDPOINT = "https://api.bitget.com/api/v2/mix/market/candles"
+
+    async def _fetch_kline(
+        self,
+        channel: Channel,
+        symbol: Any,
+        interval_ms: int,
+        timestamp: int,
+        session: aiohttp.ClientSession,
+    ) -> Optional[list[int | float]]:
+        """Fetch kline data from Bitget's public API."""
+        try:
+            interval = Interval(interval_ms)
+            interval_str = interval.to_bitget()
+
+            params = {
+                "symbol": str(symbol),
+                "productType": "USDT-FUTURES",
+                "granularity": interval_str,
+                "limit": str(LIMIT),
+                "startTime": str(timestamp),
+            }
+
+            async with session.get(self.BITGET_KLINE_ENDPOINT, params=params) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                if data.get("code") != "00000":
+                    return None
+                klines = data.get("data", [])
+                if not klines:
+                    return None
+                raw_kline = klines[0]
+                mapped_kline: list[int | float] = []
+                for idx, val in enumerate(raw_kline):
+                    if idx == 0:  # start timestamp
+                        mapped_kline.append(int(val))
+                    else:
+                        mapped_kline.append(float(val))
+                return mapped_kline
+        except Exception as exc:
+            self.logger.debug(f"Bitget kline fetch error: {exc}")
+            return None
+
+
 def _get_validator() -> Type[BaseConsumer]:
     """Return the appropriate validator based on exchange setting."""
     if settings.exchange == "bingx":
         return BingxValidator
     if settings.exchange == "bybit":
         return BybitValidator
+    if settings.exchange == "bitget":
+        return BitgetValidator
     raise ValueError(f"Unsupported exchange for validation: {settings.exchange!r}")
 
 

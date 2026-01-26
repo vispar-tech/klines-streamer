@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import Any, Dict, Set, cast
+from typing import Any, Dict, Set
 
 from streamer.broadcaster import Broadcaster
 from streamer.normalizer import normalizer
@@ -234,8 +234,8 @@ class Aggregator:
 
         # Extract message data
         message_type = message["type"]
-        timestamp = message["ts"]
-        ticker_data = cast("dict[str, Any]", message.get("data"))
+        timestamp = int(message["ts"])
+        ticker_data = message["data"]
 
         if not ticker_data:
             logger.warning(

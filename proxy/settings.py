@@ -18,6 +18,7 @@ class ProxySettings(BaseSettings):
     upstream_connections: Annotated[list[str], NoDecode] = [
         "ws://streamer-bybit:9090/",
         "ws://streamer-bingx:9090/",
+        "ws://streamer-bitget:9090/",
     ]
 
     # Authentication (same as streamer)

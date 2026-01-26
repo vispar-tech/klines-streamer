@@ -30,7 +30,8 @@ Each Docker container handles one exchange. Prepare `.env` files:
 
 ```bash
 cp .env.example .env.bybit   # then edit for Bybit
-cp .env.example .env.bingx # then edit for BingX
+cp .env.example .env.bitget  # then edit for Bitget
+cp .env.example .env.bingx   # then edit for BingX
 ```
 
 **3. Run locally:**
@@ -38,6 +39,7 @@ cp .env.example .env.bingx # then edit for BingX
 ```bash
 # Run one streamer at a time:
 STREAMER_EXCHANGE=bybit poetry run python -m streamer
+STREAMER_EXCHANGE=bitget poetry run python -m streamer
 STREAMER_EXCHANGE=bingx poetry run python -m streamer
 ```
 
@@ -45,10 +47,12 @@ STREAMER_EXCHANGE=bingx poetry run python -m streamer
 
 ```bash
 docker-compose up --build streamer-bybit
+docker-compose up --build streamer-bitget
 docker-compose up --build streamer-bingx
 
-# Or run both in background:
+# Or run multiple in background:
 docker-compose up --build streamer-bybit &
+docker-compose up --build streamer-bitget &
 docker-compose up --build streamer-bingx &
 
 # To run the unified proxy (aggregates all exchanges)
@@ -59,10 +63,10 @@ docker-compose up --build streamer-proxy
 
 ## .env Configuration
 
-**Per-exchange:** (e.g. `.env.bybit`, `.env.bingx`)
+**Per-exchange:** (e.g. `.env.bybit`, `.env.bitget`, `.env.bingx`)
 
 ```
-STREAMER_EXCHANGE=bybit  # bingx, etc.
+STREAMER_EXCHANGE=bybit  # bitget, bingx, etc.
 STREAMER_EXCHANGE_SYMBOLS=BTCUSDT,ETHUSDT
 STREAMER_EXCHANGE_LOAD_ALL_SYMBOLS=false
 STREAMER_EXCHANGE_SYMBOLS_LIMIT=
@@ -264,6 +268,7 @@ Example file output (per-exchange):
 ```
 output/file_consumer/
 ├── bybit/2026/01/12/15/20260112_150000_118938_linear_klines.jsonl
+├── bitget/2026/01/12/15/20260112_150000_118938_spot_klines.jsonl
 ├── bingx/2026/01/12/15/20260112_150000_118938_spot_klines.jsonl
 ```
 
