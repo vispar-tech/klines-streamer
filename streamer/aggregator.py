@@ -474,6 +474,20 @@ class Aggregator:
                 if sleep_seconds > 0:
                     await asyncio.sleep(sleep_seconds)
 
+                # Increment tick counter
+                self._timer_ticks_count += 1
+
+                if logger.isEnabledFor(logging.INFO):
+                    logger.info(
+                        "Aggregator timer tick: current_time_ms=%s, next_boundary=%s, "
+                        "sleep_seconds=%s, tick_count=%s, channel=%s",
+                        current_time_ms,
+                        next_boundary,
+                        sleep_seconds,
+                        self._timer_ticks_count,
+                        self._channel,
+                    )
+
                 # Close ticker klines if enabled
                 if tickers_enabled:
                     await self._close_tickers_klines(next_boundary)
@@ -481,9 +495,6 @@ class Aggregator:
                 # Additional waiter delay for trades mode
                 if waiter_enabled:
                     await asyncio.sleep(waiter_latency_ms / 1000)
-
-                # Increment tick counter
-                self._timer_ticks_count += 1
 
                 # Close appropriate klines based on mode
                 await self._close_klines(next_boundary)

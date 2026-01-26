@@ -1,19 +1,17 @@
-"""Logging configuration for the streamer application."""
+"""Logging configuration for the streamer application with file rotation."""
 
 import logging
 import sys
+from logging.handlers import TimedRotatingFileHandler
 
 from streamer.settings import settings
 
 
 def setup_logging() -> None:
     """
-    Configure logging for the application.
+    Configure logging for the application with file rotation.
 
-    Args:
-        level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        format_string: Log format string
-        log_file: Optional log file path
+    Log files are rotated each day and only the last 7 days are kept.
     """
     # Use settings values
     level = settings.log_level
@@ -40,9 +38,18 @@ def setup_logging() -> None:
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
-    # File handler (if specified)
+    # File handler with rotation (if specified)
     if log_file:
-        file_handler = logging.FileHandler(log_file)
+        # TimedRotatingFileHandler rotates logs every midnight and keeps (7 days)
+        file_handler = TimedRotatingFileHandler(
+            log_file,
+            when="midnight",
+            interval=1,
+            backupCount=7,
+            encoding="utf-8",
+            delay=True,  # Only open the file when the first log message is emitted
+            utc=True,  # Rotate in UTC time (optional, set to False for local time)
+        )
         file_handler.setLevel(numeric_level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)

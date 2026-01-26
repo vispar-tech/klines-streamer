@@ -26,7 +26,7 @@ class Broadcaster:
         self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
     ) -> None:
         """Send data to all consumers (in parallel), logging errors individually."""
-        if data_type == "klines":
+        if data_type in ["klines", "tickers-klines"]:
             # Log only for closed klines, to avoid spam
             logger.info(
                 f"Broadcasting {len(data)} items to "
