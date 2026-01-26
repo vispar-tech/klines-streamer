@@ -1,6 +1,6 @@
 [project]
 name = "klines-streamer"
-version = "0.1.0"
+version = "0.2.0"
 description = "A multi-exchange service that aggregates closed candles (klines) from cryptocurrency exchange trade streams, normalizes them, and delivers to multiple channels (Redis, WebSocket, etc.) via pluggable consumers."
 authors = [{ name = "Daniil Pavlovich", email = "layred.dota2@mail.ru" }]
 license = "MIT"
