@@ -33,6 +33,22 @@ services:
     environment:
       - STREAMER_EXCHANGE=bingx
 
+  streamer-bitget:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamer-bitget
+    networks:
+      - shared
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/bitget:/usr/src/output
+    env_file:
+      - .env
+      - .env.bitget
+    environment:
+      - STREAMER_EXCHANGE=bitget
+
   streamer-proxy:
     build:
       context: .
@@ -49,6 +65,7 @@ services:
     depends_on:
       - streamer-bybit
       - streamer-bingx
+      - streamer-bitget
 
 networks:
   shared:

@@ -55,10 +55,10 @@ class BaseSymbolLoader(ABC):
 
             return valid_symbols
 
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 f"Failed to validate symbols on {self.exchange_name}, "
-                "using original list: {exc}"
+                f"using original list: {exc}"
             )
             return set(symbols)
 
@@ -184,12 +184,56 @@ class BingxSymbolLoader(BaseSymbolLoader):
             return set()
 
 
+class BitgetSymbolLoader(BaseSymbolLoader):
+    """Symbol loader for Bitget exchange (USDT-M contracts)."""
+
+    def __init__(self) -> None:
+        """Initialize Bitget symbol loader."""
+        super().__init__("Bitget")
+        self.contracts_url = "https://api.bitget.com/api/v2/mix/market/contracts"
+        self.product_type = "USDT-FUTURES"
+
+    async def load_all_symbols(self, limit: int | None = None) -> set[str]:
+        """Load all trading symbols from Bitget API (USDT-FUTURES contracts)."""
+        try:
+            timeout = ClientTimeout(total=20)
+            params = {
+                "productType": self.product_type,
+            }
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.get(self.contracts_url, params=params) as response,
+            ):
+                response.raise_for_status()
+                data = orjson.loads(await response.read())
+            # Expect: data["code"] == "00000", data["data"] = list of contracts
+            contracts: list[dict[str, Any]] = data.get("data", [])
+            symbols = [
+                str(item["symbol"])
+                for item in contracts
+                if item.get("symbolStatus") == "normal"
+                and str(item.get("quoteCoin", "")) == "USDT"
+            ]
+            symbols = [s for s in symbols if s]
+
+            if limit is not None:
+                symbols = symbols[:limit]
+
+            logger.info(f"Loaded {len(symbols)} symbols from Bitget API")
+            return set(symbols)
+        except Exception as exc:
+            logger.warning(f"Failed to load symbols from Bitget API: {exc}")
+            return set()
+
+
 def get_symbol_loader() -> BaseSymbolLoader:
     """Return the appropriate symbol loader based on exchange setting."""
     if settings.exchange == "bingx":
         return BingxSymbolLoader()
     if settings.exchange == "bybit":
         return BybitSymbolLoader()
+    if settings.exchange == "bitget":
+        return BitgetSymbolLoader()
     # Default fallback
     raise ValueError(f"Unsupported exchange for symbol loading: {settings.exchange!r}")
 

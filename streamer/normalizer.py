@@ -26,6 +26,31 @@ BINGX_FIELDS_MAP = {
     "a": "ask1Size",
 }
 
+BITGET_FIELDS_MAP = {
+    "lastPr": "lastPr",
+    "symbol": "symbol",
+    "indexPrice": "indexPrice",
+    "open24h": "openPrice24h",
+    "nextFundingTime": "nextFundingTime",
+    "bidPr": "bid1Price",
+    "change24h": "price24hPcnt",
+    "quoteVolume": "turnover24h",
+    "deliveryPrice": "deliveryPrice",
+    "askSz": "ask1Size",
+    "low24h": "lowPrice24h",
+    "symbolType": "symbolType",
+    "openUtc": "openPriceUTC",
+    "instId": "symbol",  # This sometimes mirrors 'symbol'
+    "bidSz": "bid1Size",
+    "markPrice": "currentPrice",
+    "high24h": "highPrice24h",
+    "askPr": "ask1Price",
+    "holdingAmount": "openInterest",
+    "baseVolume": "volume24h",
+    "fundingRate": "fundingRate",
+    "ts": "eventTime",
+}
+
 
 class BaseNormalizer:
     """Base class for normalizing trade and ticker data."""
@@ -93,12 +118,53 @@ class BybitNormalizer(BaseNormalizer):
         return ticker_data
 
 
+class BitgetNormalizer(BaseNormalizer):
+    """Normalizer for Bitget."""
+
+    def handle_trade(self, trade_data: Dict[str, Any], channel: Channel) -> Any:
+        """If trade normalization is needed, implement it here."""
+        # For now, just pass through the data list
+        return [
+            {
+                "T": trade["ts"],
+                "s": trade_data["arg"]["instId"],
+                "p": trade["price"],
+                "v": trade["size"],
+            }
+            for trade in trade_data["data"]
+        ]
+
+    def handle_ticker(self, ticker_data: Dict[str, Any], channel: Channel) -> Any:
+        """Normalize Bitget ticker data."""
+        normalized_data: dict[str, Any] = {}
+
+        for k, v in ticker_data.items():
+            if k in BITGET_FIELDS_MAP:
+                normalized_data[BITGET_FIELDS_MAP[k]] = v
+            else:
+                normalized_data[k] = v  # fallback, just in case
+
+        symbol = ticker_data["symbol"]
+        topic = f"tickers.{symbol}"
+
+        ts = ticker_data["ts"]
+
+        return {
+            "topic": topic,
+            "type": "snapshot",
+            "data": normalized_data,
+            "ts": ts,
+        }
+
+
 def get_normalizer() -> BaseNormalizer:
     """Return the appropriate normalizer based on exchange setting."""
     if settings.exchange == "bingx":
         return BingxNormalizer()
     if settings.exchange == "bybit":
         return BybitNormalizer()
+    if settings.exchange == "bitget":
+        return BitgetNormalizer()
     raise RuntimeError(f"No normalizer found for exchange: {settings.exchange}")
 
 

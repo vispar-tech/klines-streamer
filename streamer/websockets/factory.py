@@ -6,6 +6,7 @@ from streamer.settings import settings
 from streamer.types import Channel
 from streamer.websockets.base import WebSocketClient
 from streamer.websockets.bingx import BingxWebSocketClient
+from streamer.websockets.bitget import BitgetWebSocketClient
 from streamer.websockets.bybit import BybitWebSocketClient
 
 
@@ -19,5 +20,6 @@ def get_websocket_client(
         return BingxWebSocketClient(channel, on_trade, on_ticker)
     if settings.exchange == "bybit":
         return BybitWebSocketClient(channel, on_trade, on_ticker)
-    # Default fallback
+    if settings.exchange == "bitget":
+        return BitgetWebSocketClient(channel, on_trade, on_ticker)
     raise ValueError(f"Unsupported exchange: {settings.exchange!r}")

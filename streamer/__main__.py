@@ -67,6 +67,9 @@ async def main_async() -> None:
                 if settings.exchange == "bingx":
                     logger.error("Spot streaming is not supported for BingX exchange.")
                     sys.exit(1)
+                if settings.exchange == "bitget":
+                    logger.error("Spot streaming is not supported for Bitget exchange.")
+                    sys.exit(1)
                 # The same for spot data
                 spot_aggregator = Aggregator(broadcaster, storage, channel="spot")
 

@@ -167,7 +167,7 @@ class WebSocketClient(ABC):
                     await asyncio.sleep(5)
             except Exception as e:
                 if self._running:
-                    logger.error(
+                    logger.exception(
                         f"Error on channel {self.channel} (socket {socket_id}): "
                         f"{e}, reconnecting in 5 seconds..."
                     )

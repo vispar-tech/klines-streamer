@@ -41,6 +41,23 @@ services:
     environment:
       - STREAMER_EXCHANGE=bingx
 
+  streamer-bitget:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamer-bitget
+    networks:
+      - traefiktointernet
+      - shared
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/bitget:/usr/src/output
+    env_file:
+      - .env
+      - .env.bitget
+    environment:
+      - STREAMER_EXCHANGE=bitget
+
   streamer-proxy:
     build:
       context: .
@@ -62,7 +79,7 @@ services:
 
       - traefik.http.services.streamer-proxy.loadbalancer.server.port=${PROXY_WEBSOCKET_PORT}
     environment:
-      - PROXY_UPSTREAM_CONNECTIONS=ws://streamer-bingx:${STREAMER_WEBSOCKET_PORT},ws://streamer-bybit:${STREAMER_WEBSOCKET_PORT}
+      - PROXY_UPSTREAM_CONNECTIONS=ws://streamer-bingx:${STREAMER_WEBSOCKET_PORT},ws://streamer-bybit:${STREAMER_WEBSOCKET_PORT},ws://streamer-bitget:${STREAMER_WEBSOCKET_PORT}
       - PROXY_WSS_AUTH_KEY=${STREAMER_WSS_AUTH_KEY}
       - PROXY_WSS_AUTH_USER=${STREAMER_WSS_AUTH_USER}
     env_file:
@@ -70,3 +87,4 @@ services:
     depends_on:
       - streamer-bybit
       - streamer-bingx
+      - streamer-bitget
