@@ -1,10 +1,10 @@
 """Type definitions and utilities for the streamer package."""
 
 import re
-from typing import Any, ClassVar, Dict, Literal, Self, Union
+from typing import Any, ClassVar, Dict, Literal, Union
 
 Channel = Literal["linear", "spot"]
-DataType = Literal["klines", "trades", "ticker", "price", "tickers-klines"]
+DataType = Literal["klines", "ticker", "price", "tickers-klines"]
 
 
 class Interval:
@@ -22,22 +22,6 @@ class Interval:
 
     Can also be constructed from integer milliseconds directly.
     """
-
-    _KLINES_MODE_AVAILABLE_INTERVALS: ClassVar[set[str]] = {
-        "1m",
-        "3m",
-        "5m",
-        "15m",
-        "30m",
-        "60m",
-        "120m",
-        "240m",
-        "360m",
-        "720m",
-        "1D",
-        "1W",
-        "1M",
-    }
 
     # Conversion factors to milliseconds
     _UNITS: ClassVar[Dict[str, int]] = {
@@ -122,11 +106,6 @@ class Interval:
             f"Cannot convert value of type {type(value).__name__} to Interval"
         )
 
-    @classmethod
-    def get_klines_mode_available_intervals(cls) -> set[Self]:
-        """Get list of available intervals for klines mode."""
-        return {cls(x) for x in cls._KLINES_MODE_AVAILABLE_INTERVALS}
-
     def to_bybit(self) -> str:
         """Convert to Bybit interval string, or raise ValueError if unsupported."""
         ms = self.to_milliseconds()
@@ -147,6 +126,27 @@ class Interval:
         if ms == 2_592_000_000:
             return "M"
         raise ValueError(f"Interval '{self!s}' cannot be represented in Bybit format")
+
+    def to_bingx(self) -> str:
+        """Convert to BingX interval string, or raise ValueError if unsupported."""
+        ms = self.to_milliseconds()
+        # Minutes intervals supported by BingX (similar to Bybit)
+        minutes_set = {1, 3, 5, 15, 30, 60, 120, 240, 360, 720}
+        minute_ms_map = {val: val * 60_000 for val in minutes_set}
+
+        for minute, minute_ms in minute_ms_map.items():
+            if ms == minute_ms:
+                return str(minute)
+        # Day
+        if ms == 86_400_000:
+            return "D"
+        # Week
+        if ms == 604_800_000:
+            return "W"
+        # Month, treated as exactly 30 days
+        if ms == 2_592_000_000:
+            return "M"
+        raise ValueError(f"Interval '{self!s}' cannot be represented in BingX format")
 
     def to_milliseconds(self) -> int:
         """Convert interval to milliseconds."""

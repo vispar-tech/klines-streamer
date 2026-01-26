@@ -11,7 +11,7 @@ from streamer.consumers import BaseConsumer, ConsumerManager
 from streamer.settings import settings
 from streamer.storage import Storage
 from streamer.utils import setup_logging, validate_settings_symbols
-from streamer.websocket import WebSocketClient
+from streamer.websockets import get_websocket_client
 
 logger = logging.getLogger("streamer")
 
@@ -33,7 +33,7 @@ async def main_async() -> None:
         await validate_settings_symbols()
 
         # Validate configuration
-        logger.info(f"Configured symbols: {settings.bybit_symbols}")
+        logger.info(f"Configured symbols: {settings.exchange_symbols}")
         logger.info(f"Configured intervals: {list(map(str, settings.kline_intervals))}")
         logger.info(f"Enabled consumers: {settings.enabled_consumers}")
 
@@ -57,21 +57,22 @@ async def main_async() -> None:
             aggregator = Aggregator(broadcaster, storage, channel="linear")
 
             # Create WebSocket client with pool support and connect to aggregator
-            websocket_client = WebSocketClient(
+            websocket_client = get_websocket_client(
                 channel="linear",
                 on_trade=aggregator.handle_trade,
-                on_kline=aggregator.handle_kline,
                 on_ticker=aggregator.handle_ticker,
             )
 
             if settings.enable_spot_stream:
+                if settings.exchange == "bingx":
+                    logger.error("Spot streaming is not supported for BingX exchange.")
+                    sys.exit(1)
                 # The same for spot data
                 spot_aggregator = Aggregator(broadcaster, storage, channel="spot")
 
-                spot_websocket_client = WebSocketClient(
+                spot_websocket_client = get_websocket_client(
                     channel="spot",
                     on_trade=spot_aggregator.handle_trade,
-                    on_kline=spot_aggregator.handle_kline,
                     on_ticker=spot_aggregator.handle_ticker,
                 )
 

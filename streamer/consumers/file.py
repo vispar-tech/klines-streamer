@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from streamer.consumers.base import BaseConsumer
+from streamer.settings import settings
 from streamer.storage import Storage
 from streamer.types import Channel, DataType
 
@@ -88,6 +89,7 @@ class FileConsumer(BaseConsumer):
             # with channel and data_type as metadata
             with file_path.open("w", encoding="utf-8") as f:
                 block = {
+                    "exchange": settings.exchange,
                     "channel": channel,
                     "data_type": data_type,
                     "timestamp": now.isoformat(),

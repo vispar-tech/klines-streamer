@@ -1,10 +1,10 @@
-"""Logging configuration for the streamer application with file rotation."""
+"""Logging configuration for the proxy application with file rotation."""
 
 import logging
 import sys
 from logging.handlers import TimedRotatingFileHandler
 
-from streamer.settings import settings
+from proxy.settings import settings
 
 
 def setup_logging() -> None:

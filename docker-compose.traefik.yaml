@@ -7,11 +7,45 @@ networks:
     external: true
 
 services:
-  streamer:
+  streamer-bybit:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: streamer
+    container_name: streamer-bybit
+    networks:
+      - traefiktointernet
+      - shared
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/bybit:/usr/src/output
+    env_file:
+      - .env
+      - .env.bybit
+    environment:
+      - STREAMER_EXCHANGE=bybit
+
+  streamer-bingx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamer-bingx
+    networks:
+      - traefiktointernet
+      - shared
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/bingx:/usr/src/output
+    env_file:
+      - .env
+      - .env.bingx
+    environment:
+      - STREAMER_EXCHANGE=bingx
+
+  streamer-proxy:
+    build:
+      context: .
+      dockerfile: proxy.Dockerfile
+    container_name: streamer-proxy
     networks:
       - traefiktointernet
       - shared
@@ -21,11 +55,18 @@ services:
       - traefik.enable=true
       - traefik.docker.network=traefiktointernet
 
-      - traefik.http.routers.streamer.entrypoints=websecure
-      - traefik.http.routers.streamer.rule=Host(`${STREAMER_HOST}`)
-      - traefik.http.routers.streamer.tls=true
-      - traefik.http.routers.streamer.tls.certresolver=letsencrypt
+      - traefik.http.routers.streamer-proxy.entrypoints=websecure
+      - traefik.http.routers.streamer-proxy.rule=Host(`${STREAMER_HOST}`)
+      - traefik.http.routers.streamer-proxy.tls=true
+      - traefik.http.routers.streamer-proxy.tls.certresolver=letsencrypt
 
-      - traefik.http.services.streamer.loadbalancer.server.port=${STREAMER_WEBSOCKET_PORT}
+      - traefik.http.services.streamer-proxy.loadbalancer.server.port=${PROXY_WEBSOCKET_PORT}
+    environment:
+      - PROXY_UPSTREAM_CONNECTIONS=ws://streamer-bingx:${STREAMER_WEBSOCKET_PORT},ws://streamer-bybit:${STREAMER_WEBSOCKET_PORT}
+      - PROXY_WSS_AUTH_KEY=${STREAMER_WSS_AUTH_KEY}
+      - PROXY_WSS_AUTH_USER=${STREAMER_WSS_AUTH_USER}
     env_file:
       - .env
+    depends_on:
+      - streamer-bybit
+      - streamer-bingx

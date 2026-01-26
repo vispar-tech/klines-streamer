@@ -1,7 +1,8 @@
-"""Implement WebSocket consumer for streaming kline data."""
+"""Implement WebSocket consumer for streaming kline data (gzip compressed)."""
 
 import asyncio
 import contextlib
+import gzip
 from typing import Any, Dict, List, Set
 
 import orjson
@@ -12,6 +13,11 @@ from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
 from streamer.storage import Storage
 from streamer.types import Channel, DataType
+
+
+def gzip_compress(data: bytes) -> bytes:
+    """Compress bytes data using gzip and return bytes."""
+    return gzip.compress(data, compresslevel=5)
 
 
 class WebSocketConnectionManager:
@@ -29,8 +35,8 @@ class WebSocketConnectionManager:
         """Remove a WebSocket connection from the set."""
         self.connections.discard(ws)
 
-    async def broadcast(self, message: str) -> None:
-        """Broadcast message to all WebSocket connections."""
+    async def broadcast(self, message: bytes) -> None:
+        """Broadcast binary message to all WebSocket connections."""
         if not self.connections:
             return
         websockets = self.connections.copy()
@@ -51,7 +57,7 @@ class WebSocketConnectionManager:
 
 
 class WebSocketConsumer(BaseConsumer):
-    """Stream kline data to connected WebSocket clients."""
+    """Stream gzip-compressed kline data to connected WebSocket clients."""
 
     def __init__(self, storage: Storage, name: str = "websocket") -> None:
         """Initialize with storage and resource manager."""
@@ -85,8 +91,25 @@ class WebSocketConsumer(BaseConsumer):
                 "WSS_AUTH_USER is required when WebSocket consumer is enabled"
             )
 
+    async def send_json(self, ws: ServerConnection, data: dict[str, Any]) -> None:
+        """Send plain JSON (as text) to the websocket."""
+        try:
+            payload = orjson.dumps(data).decode("utf-8")
+            await ws.send(payload)
+        except Exception as e:
+            self.logger.error(f"Failed to send json to client: {e}")
+
+    async def send_gzip_json(self, ws: ServerConnection, data: dict[str, Any]) -> None:
+        """Send JSON as gzipped binary data to the websocket."""
+        try:
+            payload = orjson.dumps(data)
+            compressed = gzip_compress(payload)
+            await ws.send(compressed)
+        except Exception as e:
+            self.logger.error(f"Failed to send gzip json to client: {e}")
+
     async def authenticate(self, ws: ServerConnection) -> bool:
-        """Authenticate a WebSocket client."""
+        """Authenticate a WebSocket client (responses are plain JSON)."""
         try:
             auth_message = await asyncio.wait_for(ws.recv(), timeout=10.0)
             try:
@@ -94,7 +117,7 @@ class WebSocketConsumer(BaseConsumer):
                 user = auth_data.get("user")
                 key = auth_data.get("key")
             except Exception:
-                await ws.send(orjson.dumps({"error": "Invalid auth format"}).decode())
+                await self.send_json(ws, {"error": "Invalid auth format"})
                 self.logger.warning("Invalid authentication message format")
                 return False
 
@@ -104,14 +127,14 @@ class WebSocketConsumer(BaseConsumer):
                 and user == settings.wss_auth_user
                 and key == settings.wss_auth_key
             ):
-                await ws.send(orjson.dumps({"status": "authenticated"}).decode())
+                await self.send_json(ws, {"status": "authenticated"})
                 self.logger.info(f"Client authenticated: {ws.remote_address}")
                 return True
-            await ws.send(orjson.dumps({"error": "Authentication failed"}).decode())
+            await self.send_json(ws, {"error": "Authentication failed"})
             self.logger.warning(f"Authentication failed for: {ws.remote_address}")
             return False
         except asyncio.TimeoutError:
-            await ws.send(orjson.dumps({"error": "Authentication timeout"}).decode())
+            await self.send_json(ws, {"error": "Authentication timeout"})
             self.logger.warning(f"Authentication timeout for: {ws.remote_address}")
             return False
         except ConnectionClosed:
@@ -147,14 +170,22 @@ class WebSocketConsumer(BaseConsumer):
                 f"Client authenticated. Total: {self.connection_manager.count()}"
             )
 
-            # Send initial data to the client
+            # Send initial data to the client (as JSON, not compressed)
             await self._send_initial_data(ws)
 
             async for message in ws:
                 try:
+                    # Client messages are expected to be JSON (text).
                     data = orjson.loads(message)
                     if data.get("type") == "ping":
-                        await ws.send(orjson.dumps({"type": "pong"}).decode())
+                        # Respond with plain JSON pong (not compressed);
+                        await self.send_json(ws, {"type": "pong"})
+                    elif data.get("type") == "request_initial_data":
+                        self.logger.info(
+                            f"Client {ws.remote_address} requested initial data."
+                        )
+                        request_id = data.get("request_id")
+                        await self._send_initial_data(ws, request_id)
                 except Exception as err:
                     self.logger.error(
                         f"Error handling websocket message "
@@ -205,19 +236,25 @@ class WebSocketConsumer(BaseConsumer):
     async def consume(
         self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
     ) -> None:
-        """Broadcast kline data to WebSocket clients."""
+        """Broadcast kline data to WebSocket clients using gzip compression."""
         if not self._is_running:
             return
 
         try:
-            message = orjson.dumps(
-                {"channel": channel, "data_type": data_type, "data": data}
-            ).decode("utf-8")
-            await self.connection_manager.broadcast(message)
+            payload = orjson.dumps(
+                {
+                    "exchange": settings.exchange,
+                    "channel": channel,
+                    "data_type": data_type,
+                    "data": data,
+                }
+            )
+            compressed_message = gzip_compress(payload)
+            await self.connection_manager.broadcast(compressed_message)
 
             c = self.connection_manager.count()
             if data_type in ["klines", "tickers-klines"]:
-                self.logger.debug(f"Broadcasted kline data to {c} WebSocket client(s)")
+                self.logger.debug(f"Broadcasted {data_type} to {c} WebSocket client(s)")
         except Exception as e:
             self.logger.error(f"Broadcast failed: {e}")
 
@@ -230,8 +267,9 @@ class WebSocketConsumer(BaseConsumer):
             active_connections = self.connection_manager.count()
             if active_connections > 0:
                 self.logger.info(f"Closing {active_connections} WebSocket connections")
-                close_message = orjson.dumps({"type": "server_shutdown"}).decode()
-                await self.connection_manager.broadcast(close_message)
+                # Send shutdown as JSON (text)
+                for ws in list(self.connection_manager.connections):
+                    await self.send_json(ws, {"type": "server_shutdown"})
 
             if self.server:
                 self.server.close()
@@ -249,8 +287,10 @@ class WebSocketConsumer(BaseConsumer):
             self.server = None
             self._server_task = None
 
-    async def _send_initial_data(self, ws: ServerConnection) -> None:
-        """Send initial kline data to newly connected client."""
+    async def _send_initial_data(
+        self, ws: ServerConnection, request_id: Any | None = None
+    ) -> None:
+        """Send initial kline data to newly connected client as JSON."""
         try:
             # Get last closed klines for all channels
             channels: list[Channel] = ["linear", "spot"]
@@ -260,28 +300,32 @@ class WebSocketConsumer(BaseConsumer):
                     # Send regular klines
                     klines_data = await self._storage.get_last_closed_klines(channel)
                     if klines_data:
-                        message = orjson.dumps(
-                            {
-                                "channel": channel,
-                                "data_type": "klines",
-                                "data": klines_data,
-                            }
-                        ).decode("utf-8")
-                        await ws.send(message)
+                        msg = {
+                            "type": "initial_data",
+                            "exchange": settings.exchange,
+                            "channel": channel,
+                            "data_type": "klines",
+                            "data": klines_data,
+                        }
+                        if request_id is not None:
+                            msg["request_id"] = request_id
+                        await self.send_json(ws, msg)
 
                     # Send ticker klines
                     ticker_klines_data = (
                         await self._storage.get_last_closed_ticker_klines(channel)
                     )
                     if ticker_klines_data:
-                        message = orjson.dumps(
-                            {
-                                "channel": channel,
-                                "data_type": "tickers-klines",
-                                "data": ticker_klines_data,
-                            }
-                        ).decode("utf-8")
-                        await ws.send(message)
+                        msg = {
+                            "type": "initial_data",
+                            "exchange": settings.exchange,
+                            "channel": channel,
+                            "data_type": "tickers-klines",
+                            "data": ticker_klines_data,
+                        }
+                        if request_id is not None:
+                            msg["request_id"] = request_id
+                        await self.send_json(ws, msg)
 
                 except Exception as e:
                     self.logger.warning(f"Failed to send initial {channel} data: {e}")

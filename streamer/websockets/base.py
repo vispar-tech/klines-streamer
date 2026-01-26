@@ -1,10 +1,10 @@
-"""Bybit WebSocket client with socket pool support."""
+"""Base WebSocket client with socket pool support."""
 
 import asyncio
 import logging
+from abc import ABC, abstractmethod
 from typing import Any, Callable, Coroutine, Dict, List, Set
 
-import orjson
 import websockets
 from websockets.asyncio.client import ClientConnection
 from websockets.exceptions import ConnectionClosed
@@ -15,58 +15,40 @@ from streamer.types import Channel
 logger = logging.getLogger(__name__)
 
 
-class WebSocketClient:
-    """Bybit WebSocket client with support for socket pools."""
+class WebSocketClient(ABC):
+    """Base WebSocket client with support for socket pools."""
 
     def __init__(
         self,
         channel: Channel,
         on_trade: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
-        on_kline: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
         on_ticker: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
     ) -> None:
         """Initialize WebSocket client with pool support.
 
         Args:
-            symbols: List of trading symbols to subscribe to
+            channel: WebSocket channel to connect to
             on_trade: Callback function to handle incoming trade data
-            url: WebSocket URL for Bybit
-            pool_size: Number of concurrent WebSocket connections to use
+            on_ticker: Callback function to handle incoming ticker data
         """
-        self.symbols = settings.bybit_symbols
+        self.symbols = settings.exchange_symbols
         self.on_trade = on_trade
-        self.on_kline = on_kline
         self.on_ticker = on_ticker
 
-        self.url = f"wss://stream.bybit.com/v5/public/{channel}"
-        self.pool_size = settings.bybit_socket_pool_size
+        self.url = self._get_websocket_url(channel)
+        self.pool_size = settings.exchange_socket_pool_size
 
         self.channel = channel  # store channel for logs
-
-        self.topic: str | None = None
-        self.ticker_topic: str | None = None
-
-        if settings.klines_mode:
-            self.topic_part = "kline."
-            if settings.enable_klines_stream:
-                self.topic = "kline.{interval}.{symbol}"
-        else:
-            self.topic_part = "publicTrade."
-            if settings.enable_klines_stream or settings.enable_trades_stream:
-                self.topic = "publicTrade.{symbol}"
-
-        self.ticker_topic_part = "tickers."
-        if (
-            settings.enable_ticker_stream
-            or settings.enable_price_stream
-            or settings.enable_tickers_kline_stream
-        ):
-            self.ticker_topic = "tickers.{symbol}"
 
         # Pool management
         self._running = False
         self._socket_tasks: List[asyncio.Task[None]] = []
         self._sockets: Dict[int, ClientConnection] = {}
+
+    @abstractmethod
+    def _get_websocket_url(self, channel: Channel) -> str:
+        """Return the WebSocket URL for the specific exchange."""
+        ...
 
     async def start(self) -> None:
         """Start the socket pool processor."""
@@ -81,20 +63,23 @@ class WebSocketClient:
 
         # Distribute symbols across sockets
         distributed_symbols = self._distribute_symbols(self.symbols)
+        total_pool_size = len(distributed_symbols)
+        if total_pool_size != self.pool_size:
+            logger.info(
+                f"Adjust pool size {self.pool_size} -> {total_pool_size} "
+                f"on channel {self.channel}"
+            )
 
         # Create and start all sockets concurrently
         socket_tasks: List[asyncio.Task[None]] = []
         for i, socket_symbols in enumerate(distributed_symbols):
+            if len(socket_symbols) == 0:
+                continue
+
             logger.info(
-                f"Creating socket {i + 1}/{self.pool_size} "
+                f"Creating socket {i + 1}/{total_pool_size} "
                 f"with {len(socket_symbols)} symbols on channel {self.channel}"
             )
-            if len(socket_symbols) == 0:
-                logger.warning(
-                    f"No symbols for socket {i + 1}/{self.pool_size} "
-                    f"on channel {self.channel}"
-                )
-                continue
 
             # Start socket as background task
             task = asyncio.create_task(self._run_socket(i, socket_symbols))
@@ -141,7 +126,7 @@ class WebSocketClient:
         for i, symbol in enumerate(symbols):
             distributed[i % self.pool_size].add(symbol)
 
-        return distributed
+        return list(filter(lambda symbols: len(symbols), distributed))
 
     async def _run_socket(self, socket_id: int, symbols: Set[str]) -> None:
         """Run a single WebSocket connection."""
@@ -168,7 +153,7 @@ class WebSocketClient:
                     try:
                         # Message handling loop
                         async for message in websocket:
-                            await self._handle_message(message)
+                            await self._handle_message(message, websocket)
                     finally:
                         ping_task.cancel()
                         self._sockets.pop(socket_id, None)
@@ -190,78 +175,16 @@ class WebSocketClient:
 
         logger.info(f"Socket {socket_id} stopped on channel {self.channel}")
 
+    @abstractmethod
     async def _subscribe(self, websocket: ClientConnection, symbols: Set[str]) -> None:
-        """Subscribe to streams for assigned symbols (including tickers)."""
-        args: list[str] = []
-        # Add main stream topics (kline or trades)
-        if settings.klines_mode and self.topic:
-            args += [
-                self.topic.format(symbol=symbol, interval=interval.to_bybit())
-                for interval in settings.kline_intervals
-                for symbol in symbols
-            ]
-        elif self.topic:
-            args += [self.topic.format(symbol=symbol) for symbol in symbols]
-        # Always add tickers.{symbol} for each symbol
-        if self.ticker_topic:
-            args += [self.ticker_topic.format(symbol=symbol) for symbol in symbols]
+        """Subscribe to streams for assigned symbols."""
 
-        subscription_msg = {"op": "subscribe", "args": args}
-
-        await websocket.send(orjson.dumps(subscription_msg).decode("utf-8"))
-        logger.info(f"Subscribed to streams: {args} on channel {self.channel}")
-
+    @abstractmethod
     async def _ping_loop(self, socket_id: int, websocket: ClientConnection) -> None:
         """Send periodic ping messages."""
-        while self._running:
-            try:
-                ping_msg = {"req_id": f"ping_{socket_id}", "op": "ping"}
-                await websocket.send(orjson.dumps(ping_msg).decode("utf-8"))
-                await asyncio.sleep(30)
-            except Exception as e:
-                logger.error(
-                    f"Ping error on channel {self.channel} (socket {socket_id}): {e}"
-                )
-                break
 
-    async def _handle_message(self, message: str | bytes) -> None:
+    @abstractmethod
+    async def _handle_message(
+        self, message: websockets.Data, websocket: ClientConnection
+    ) -> None:
         """Handle incoming WebSocket message."""
-        try:
-            if isinstance(message, bytes):
-                data = orjson.loads(message)
-            else:
-                data = orjson.loads(message)
-
-            # Skip ping responses and subscription confirmations
-            if data.get("op") == "ping" and data.get("ret_msg") == "pong":
-                return
-            if data.get("op") == "subscribe":
-                logger.debug(
-                    f"Subscription confirmed on channel {self.channel}: {data}"
-                )
-                return
-
-            topic = data.get("topic", "")
-            # Handle both main data stream (trade/kline) and tickers
-            if not (topic.startswith((self.topic_part, self.ticker_topic_part))):
-                return
-
-            trades_or_data = data.get("data")
-            if not trades_or_data:
-                return
-
-            if topic.startswith(self.ticker_topic_part):
-                await self.on_ticker(data)
-                return
-
-            if settings.klines_mode:
-                await self.on_kline(data)
-            else:
-                # Handle trade data
-                await self.on_trade(data)
-
-        except orjson.JSONDecodeError as e:
-            logger.error(
-                f"Failed to parse message on channel {self.channel}: {e}, "
-                f"message: {message!s}"
-            )

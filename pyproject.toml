@@ -1,7 +1,7 @@
 [project]
-name = "bybit-klines-streamer"
-version = "0.1.0"
-description = "A service that aggregates closed candles (klines) from Bybit trade streams, normalizes them, and delivers to multiple channels (Redis, WebSocket, etc.) via pluggable consumers."
+name = "klines-streamer"
+version = "0.2.0"
+description = "A multi-exchange service that aggregates closed candles (klines) from cryptocurrency exchange trade streams, normalizes them, and delivers to multiple channels (Redis, WebSocket, etc.) via pluggable consumers."
 authors = [{ name = "Daniil Pavlovich", email = "layred.dota2@mail.ru" }]
 license = "MIT"
 readme = "README.md"
@@ -20,8 +20,8 @@ dependencies = [
 
 [tool.poetry]
 include = ["LICENSE"]
-homepage = "https://github.com/vispar-tech/bybit-klines-streamer"
-repository = "https://github.com/vispar-tech/bybit-klines-streamer"
+homepage = "https://github.com/vispar-tech/klines-streamer"
+repository = "https://github.com/vispar-tech/klines-streamer"
 packages = [
     { include = "streamer" }
 ]
@@ -30,6 +30,13 @@ packages = [
 ruff = "^0.14.8"
 mypy = "^1.19.0"
 pre-commit = "^4.5.0"
+
+[tool.poetry.group.proxy.dependencies]
+websockets = "^15.0.1"
+orjson = "^3.11.5"
+pydantic-settings = "^2.12.0"
+pydantic = "^2.12.5"
+aiofiles = "^25.1.0"
 
 [tool.mypy]
 python_version = "3.12"
@@ -41,10 +48,10 @@ implicit_reexport = false
 warn_unused_ignores = true
 warn_return_any = true
 namespace_packages = true
-files = ["streamer"]
+files = ["streamer", "proxy"]
 
 [tool.ruff]
-include = ["streamer/**/*.py"]
+include = ["streamer/**/*.py", "proxy/**/*.py"]
 line-length = 88
 fix = true
 unsafe-fixes = true
@@ -74,8 +81,7 @@ select = [
     "PTH",
     "ERA",
     "PLR",
-    "RUF",
-    "TC"
+    "RUF"
 
 ]
 ignore = [
@@ -84,7 +90,7 @@ ignore = [
 fixable = ["ALL"]
 unfixable = []
 pydocstyle = { convention = "pep257", ignore-decorators = ["typing.overload"] }
-isort = { force-single-line = false, known-first-party = ["streamer"] }
+isort = { force-single-line = false, known-first-party = ["streamer", "proxy"] }
 pylint = { allow-magic-value-types = ["int", "str", "float", "bytes"], max-args = 7 }
 mccabe = {max-complexity = 14}
 

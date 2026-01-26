@@ -1,8 +1,8 @@
 """Application settings using Pydantic."""
 
-from typing import Annotated, Any, Set
+from typing import Annotated, Any, Literal, Set
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from yarl import URL
 
@@ -12,11 +12,12 @@ from streamer.types import Interval
 class Settings(BaseSettings):
     """Application configuration settings."""
 
-    # Bybit configuration
-    bybit_symbols: Annotated[set[str], NoDecode] = {"BTCUSDT", "ETHUSDT"}
-    bybit_load_all_symbols: bool = False
-    bybit_symbols_limit: int | None = None
-    bybit_socket_pool_size: int = 50
+    exchange: Literal["bingx", "bybit"] = Field(default=...)
+    # Exchange configuration
+    exchange_symbols: Annotated[set[str], NoDecode] = {"BTCUSDT", "ETHUSDT"}
+    exchange_load_all_symbols: bool = False
+    exchange_symbols_limit: int | None = None
+    exchange_socket_pool_size: int = 50
     kline_intervals: Annotated[Set[Interval], NoDecode] = set()
 
     # Streaming configuration
@@ -24,7 +25,6 @@ class Settings(BaseSettings):
     enable_price_stream: bool = False
     enable_ticker_stream: bool = False
     enable_tickers_kline_stream: bool = False
-    enable_trades_stream: bool = False
     enable_spot_stream: bool = False
 
     # Redis configuration
@@ -54,19 +54,15 @@ class Settings(BaseSettings):
     # Aggregator configuration
     aggregator_waiter_mode_enabled: bool = True
     aggregator_waiter_latency_ms: int = 80
-    klines_mode: bool = False
-
-    # Storage configuration
-    storage_enabled: bool = False
 
     # Logging configuration
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     log_file: str = ""
 
-    @field_validator("bybit_symbols", mode="before")
+    @field_validator("exchange_symbols", mode="before")
     @classmethod
-    def validate_bybit_symbols(cls, value: Any) -> set[str]:
+    def validate_exchange_symbols(cls, value: Any) -> set[str]:
         """Parse string or list to set of symbols."""
         items: list[str] = []
         if isinstance(value, str):
@@ -104,39 +100,20 @@ class Settings(BaseSettings):
         return {x for x in items if x}
 
     @model_validator(mode="after")
-    def validate_klines_mode_intervals(self) -> "Settings":
-        """Validate that all intervals are available in klines mode when enabled."""
-        if self.klines_mode:
-            available_intervals = Interval.get_klines_mode_available_intervals()
-            invalid_intervals = {
-                interval
-                for interval in self.kline_intervals
-                if interval not in available_intervals
-            }
-            if invalid_intervals:
-                raise ValueError(
-                    f"Invalid intervals for klines mode: {invalid_intervals}. "
-                    f"Available intervals: {available_intervals}"
-                )
-            if self.aggregator_waiter_mode_enabled:
-                raise ValueError(
-                    "aggregator_waiter_mode_enabled cannot be True in klines mode; "
-                    "set to False."
-                )
-
+    def validate_settings(self) -> "Settings":
+        """Validate settings configuration."""
         # Ensure at least one of the streaming options is enabled
         enabled_flags = [
             self.enable_klines_stream,
             self.enable_price_stream,
             self.enable_ticker_stream,
             self.enable_tickers_kline_stream,
-            self.enable_trades_stream,
         ]
         if not any(enabled_flags):
             raise ValueError(
                 "At least one of 'enable_klines_stream', "
                 "'enable_price_stream', 'enable_ticker_stream', "
-                "'enable_tickers_kline_stream', or 'enable_trades_stream' "
+                "'enable_tickers_kline_stream' "
                 "must be enabled."
             )
 
@@ -168,7 +145,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         env_prefix="STREAMER_",
-        extra="forbid",
+        extra="ignore",
     )
 
 
