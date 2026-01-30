@@ -79,7 +79,6 @@ services:
 
       - traefik.http.services.streamer-proxy.loadbalancer.server.port=${PROXY_WEBSOCKET_PORT}
     environment:
-      - PROXY_UPSTREAM_CONNECTIONS=ws://streamer-bingx:${STREAMER_WEBSOCKET_PORT},ws://streamer-bybit:${STREAMER_WEBSOCKET_PORT},ws://streamer-bitget:${STREAMER_WEBSOCKET_PORT}
       - PROXY_WSS_AUTH_KEY=${STREAMER_WSS_AUTH_KEY}
       - PROXY_WSS_AUTH_USER=${STREAMER_WSS_AUTH_USER}
     env_file:
