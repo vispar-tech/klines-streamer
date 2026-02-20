@@ -147,6 +147,16 @@ class Aggregator:
             if extra:
                 logger.info("Additional config: %s", ", ".join(extra))
 
+    def set_total_symbols_count(self, value: int) -> None:
+        """Set the total count of symbols to be processed."""
+        self._total_symbols_count = value
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                "Total symbols count set to %d for aggregator channel: %s",
+                value,
+                self._channel,
+            )
+
     async def handle_trade(self, raw_message: Dict[str, Any]) -> None:
         """Handle trade event and update OHLC buckets per bucket_start."""
         trades_data = normalizer.handle_trade(raw_message, self._channel)

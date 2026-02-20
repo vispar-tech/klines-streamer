@@ -14,12 +14,19 @@ def get_websocket_client(
     channel: Channel,
     on_trade: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
     on_ticker: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
+    on_symbols_count_changed: Callable[[int], None] | None = None,
 ) -> WebSocketClient:
     """Return the appropriate WebSocket client based on exchange setting."""
+    kwargs: dict[str, Any] = {
+        "channel": channel,
+        "on_trade": on_trade,
+        "on_ticker": on_ticker,
+        "on_symbols_count_changed": on_symbols_count_changed,
+    }
     if settings.exchange == "bingx":
-        return BingxWebSocketClient(channel, on_trade, on_ticker)
+        return BingxWebSocketClient(**kwargs)
     if settings.exchange == "bybit":
-        return BybitWebSocketClient(channel, on_trade, on_ticker)
+        return BybitWebSocketClient(**kwargs)
     if settings.exchange == "bitget":
-        return BitgetWebSocketClient(channel, on_trade, on_ticker)
+        return BitgetWebSocketClient(**kwargs)
     raise ValueError(f"Unsupported exchange: {settings.exchange!r}")

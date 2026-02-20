@@ -28,9 +28,10 @@ class BitgetWebSocketClient(WebSocketClient):
         channel: Channel,
         on_trade: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
         on_ticker: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
+        on_symbols_count_changed: Callable[[int], None] | None = None,
     ) -> None:
         """Initialize Bitget WebSocket client."""
-        super().__init__(channel, on_trade, on_ticker)
+        super().__init__(channel, on_trade, on_ticker, on_symbols_count_changed)
 
         # Bitget USDT Perpetual topics
         self.inst_type = "USDT-FUTURES"

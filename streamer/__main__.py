@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import sys
-from typing import List
+from typing import List, Optional
 
 import uvloop
 
@@ -13,9 +13,28 @@ from streamer.consumers import BaseConsumer, ConsumerManager
 from streamer.settings import settings
 from streamer.storage import Storage
 from streamer.utils import setup_logging, validate_settings_symbols
-from streamer.websockets import get_websocket_client
+from streamer.websockets import WebSocketClient, get_websocket_client
 
 logger = logging.getLogger("streamer")
+
+
+async def _validate_startup() -> tuple[Storage, List[BaseConsumer]]:
+    # Create main storage processor that will storage all data from websocket
+    storage = Storage()
+    await storage.setup()
+    # Process and validate symbols
+    await validate_settings_symbols()
+
+    # Validate configuration
+    logger.info(f"Configured symbols: {settings.exchange_symbols}")
+    logger.info(f"Configured intervals: {list(map(str, settings.kline_intervals))}")
+    logger.info(f"Enabled consumers: {settings.enabled_consumers}")
+
+    # Setup consumers
+    consumers = await ConsumerManager.setup_consumers(
+        storage, settings.enabled_consumers
+    )
+    return storage, consumers
 
 
 async def main_async() -> None:
@@ -25,24 +44,11 @@ async def main_async() -> None:
     logger.info("Starting Bybit Klines Streamer")
 
     consumers: List[BaseConsumer] = []
+    websocket_client: Optional[WebSocketClient] = None
+    spot_websocket_client: Optional[WebSocketClient] = None
 
     try:
-        # Create main storage processor that will storage all data from websocket
-        storage = Storage()
-        await storage.setup()
-
-        # Process and validate symbols
-        await validate_settings_symbols()
-
-        # Validate configuration
-        logger.info(f"Configured symbols: {settings.exchange_symbols}")
-        logger.info(f"Configured intervals: {list(map(str, settings.kline_intervals))}")
-        logger.info(f"Enabled consumers: {settings.enabled_consumers}")
-
-        # Setup consumers
-        consumers = await ConsumerManager.setup_consumers(
-            storage, settings.enabled_consumers
-        )
+        storage, consumers = await _validate_startup()
 
         if consumers:
             # Initialize consumers
@@ -63,6 +69,7 @@ async def main_async() -> None:
                 channel="linear",
                 on_trade=aggregator.handle_trade,
                 on_ticker=aggregator.handle_ticker,
+                on_symbols_count_changed=aggregator.set_total_symbols_count,
             )
 
             if settings.enable_spot_stream:
@@ -79,6 +86,7 @@ async def main_async() -> None:
                     channel="spot",
                     on_trade=spot_aggregator.handle_trade,
                     on_ticker=spot_aggregator.handle_ticker,
+                    on_symbols_count_changed=spot_aggregator.set_total_symbols_count,
                 )
 
                 # Run aggregator timer
@@ -105,6 +113,12 @@ async def main_async() -> None:
         logger.error(f"Application error: {e}")
         sys.exit(1)
     finally:
+        # Stop WebSocket clients
+        if websocket_client is not None:
+            await websocket_client.stop()
+        if spot_websocket_client is not None:
+            await spot_websocket_client.stop()
+
         # Shutdown consumers
         if consumers:
             await ConsumerManager.shutdown_consumers(consumers)

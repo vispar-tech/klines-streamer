@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     exchange_symbols: Annotated[set[str], NoDecode] = {"BTCUSDT", "ETHUSDT"}
     exchange_load_all_symbols: bool = False
     exchange_symbols_limit: int | None = None
+    exchange_symbols_refresh_interval_sec: int = 900
     exchange_socket_pool_size: int = 50
     kline_intervals: Annotated[Set[Interval], NoDecode] = set()
 
