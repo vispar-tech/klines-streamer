@@ -7,6 +7,8 @@ import sys
 from types import FrameType
 from typing import Optional
 
+import uvloop
+
 from proxy.logging import setup_logging
 from proxy.message_router import MessageRouter
 from proxy.settings import settings
@@ -80,7 +82,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        uvloop.run(main())
     except KeyboardInterrupt:
         pass
     except Exception:

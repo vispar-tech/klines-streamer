@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Example WebSocket client for the proxy server."""
 
+import asyncio
 import gzip
 import os
 import ssl
@@ -85,3 +86,7 @@ async def main() -> None:
 
     except Exception as e:
         log(f"msg=ConnectionError error={e}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

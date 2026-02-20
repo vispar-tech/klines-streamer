@@ -5,6 +5,8 @@ import logging
 import sys
 from typing import List
 
+import uvloop
+
 from streamer.aggregator import Aggregator
 from streamer.broadcaster import Broadcaster
 from streamer.consumers import BaseConsumer, ConsumerManager
@@ -113,7 +115,7 @@ async def main_async() -> None:
 def main() -> None:
     """Start the main application."""
     try:
-        asyncio.run(main_async())
+        uvloop.run(main_async())
     except KeyboardInterrupt:
         logger.info("Application interrupted")
     except Exception as e:

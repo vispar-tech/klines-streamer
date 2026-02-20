@@ -15,7 +15,7 @@ install-proxy: ## Install proxy dependencies
 
 run: ## Run the Bybit klines streamer
 	@echo "🚀 Running Bybit klines streamer..."
-	@poetry run python -m streamer
+	@STREAMER_EXCHANGE=bybit poetry run python -m streamer
 
 run-proxy: ## Run the proxy server
 	@echo "🚀 Running proxy server..."
