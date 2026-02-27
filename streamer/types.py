@@ -1,10 +1,11 @@
 """Type definitions and utilities for the streamer package."""
 
 import re
-from typing import Any, ClassVar, Dict, Literal, Union
+from typing import Any, ClassVar, Literal
 
 Channel = Literal["linear", "spot"]
 DataType = Literal["klines", "ticker", "price", "tickers-klines"]
+ExchangeType = Literal["bybit", "bingx", "bitget", "binance", "okx"]
 
 
 class Interval:
@@ -24,7 +25,7 @@ class Interval:
     """
 
     # Conversion factors to milliseconds
-    _UNITS: ClassVar[Dict[str, int]] = {
+    _UNITS: ClassVar[dict[str, int]] = {
         "ms": 1,  # milliseconds
         "s": 1000,  # seconds to milliseconds
         "m": 60 * 1000,  # minutes to milliseconds
@@ -37,7 +38,7 @@ class Interval:
     _PATTERN = re.compile(r"^(\d+)(ms|[smhDWM])$")
     _MIN_MILLISECONDS = 100
 
-    def __init__(self, interval: Union[str, int]) -> None:
+    def __init__(self, interval: str | int) -> None:
         """
         Initialize interval from string format or direct milliseconds.
 
@@ -104,160 +105,6 @@ class Interval:
             return cls(value)
         raise TypeError(
             f"Cannot convert value of type {type(value).__name__} to Interval"
-        )
-
-    def to_bybit(self) -> str:
-        """Convert to Bybit interval string, or raise ValueError if unsupported."""
-        ms = self.to_milliseconds()
-        # Minutes intervals supported by Bybit
-        minutes_set = {1, 3, 5, 15, 30, 60, 120, 240, 360, 720}
-        minute_ms_map = {val: val * 60_000 for val in minutes_set}
-
-        for minute, minute_ms in minute_ms_map.items():
-            if ms == minute_ms:
-                return str(minute)
-        # Day
-        if ms == 86_400_000:
-            return "D"
-        # Week
-        if ms == 604_800_000:
-            return "W"
-        # Month, treated as exactly 30 days
-        if ms == 2_592_000_000:
-            return "M"
-        raise ValueError(f"Interval '{self!s}' cannot be represented in Bybit format")
-
-    def to_bingx(self) -> str:
-        """Convert to BingX interval string, or raise ValueError if unsupported."""
-        ms = self.to_milliseconds()
-        # Minutes intervals supported by BingX (similar to Bybit)
-        minutes_set = {1, 3, 5, 15, 30, 60, 120, 240, 360, 720}
-        minute_ms_map = {val: val * 60_000 for val in minutes_set}
-
-        for minute, minute_ms in minute_ms_map.items():
-            if ms == minute_ms:
-                return str(minute)
-        # Day
-        if ms == 86_400_000:
-            return "D"
-        # Week
-        if ms == 604_800_000:
-            return "W"
-        # Month, treated as exactly 30 days
-        if ms == 2_592_000_000:
-            return "M"
-        raise ValueError(f"Interval '{self!s}' cannot be represented in BingX format")
-
-    def to_websocket_bitget(self, utc: bool = False) -> str:
-        """
-        Convert to Bitget channel name string, or raise ValueError if unsupported.
-
-        Formats:
-            candle1m (1 minute), candle5m (5 minutes), candle15m (15 minutes),
-            candle30m (30 minutes), candle1H (1 hour), candle4H (4 hours),
-            candle6H (6 hours), candle6Hutc (6 hours utc), candle12H (12 hours),
-            candle12Hutc (12 hours utc), candle3D (3 days), candle3Dutc,
-            candle1D (1 day), candle1Dutc, candle1W (1 week), candle1Wutc,
-            candle1M (1 month), candle1Mutc
-        utc: If True, use UTC variant (where available).
-        """
-        ms = self.to_milliseconds()
-        bitget_map = {
-            60_000: "candle1m",
-            300_000: "candle5m",
-            900_000: "candle15m",
-            1_800_000: "candle30m",
-            3_600_000: "candle1H",
-            14_400_000: "candle4H",
-            21_600_000: "candle6H",
-            43_200_000: "candle12H",
-            86_400_000: "candle1D",
-            259_200_000: "candle3D",
-            604_800_000: "candle1W",
-            2_592_000_000: "candle1M",
-        }
-        bitget_map_utc = {
-            21_600_000: "candle6Hutc",
-            43_200_000: "candle12Hutc",
-            86_400_000: "candle1Dutc",
-            259_200_000: "candle3Dutc",
-            604_800_000: "candle1Wutc",
-            2_592_000_000: "candle1Mutc",
-        }
-        # UTC variants only for particular intervals
-        if utc and ms in bitget_map_utc:
-            return bitget_map_utc[ms]
-        # Regular intervals
-        if ms in bitget_map:
-            return bitget_map[ms]
-        raise ValueError(
-            f"Interval '{self!s}' cannot be represented as a Bitget channel name"
-        )
-
-    def to_bitget(self, utc: bool = False) -> str:
-        """
-        Convert to Bitget K-Line granularity string, or raise ValueError if unsupported.
-
-        Bitget K-line particle size:
-            - 1m (1 minute)
-            - 3m (3 minutes)
-            - 5m (5 minutes)
-            - 15m (15 minutes)
-            - 30m (30 minutes)
-            - 1H (1 hour)
-            - 4H (4 hours)
-            - 6H (6 hours)
-            - 12H (12 hours)
-            - 1D (1 day)
-            - 3D (3 days)
-            - 1W (1 week)
-            - 1M (1 month)
-            - 6Hutc (UTC 6 hour line)
-            - 12Hutc (UTC 12 hour line)
-            - 1Dutc (UTC 1-day line)
-            - 3Dutc (UTC 3-day line)
-            - 1Wutc (UTC weekly line)
-            - 1Mutc (UTC monthly line)
-
-        Args:
-            utc (bool): If True, use the UTC variant string where available.
-
-        Returns:
-            str: Bitget K-line granularity string.
-
-        Raises:
-            ValueError: If the interval cannot be represented.
-        """
-        ms = self.to_milliseconds()
-        mapping = {
-            60_000: "1m",
-            180_000: "3m",
-            300_000: "5m",
-            900_000: "15m",
-            1_800_000: "30m",
-            3_600_000: "1H",
-            14_400_000: "4H",
-            21_600_000: "6H",
-            43_200_000: "12H",
-            86_400_000: "1D",
-            259_200_000: "3D",
-            604_800_000: "1W",
-            2_592_000_000: "1M",
-        }
-        mapping_utc = {
-            21_600_000: "6Hutc",
-            43_200_000: "12Hutc",
-            86_400_000: "1Dutc",
-            259_200_000: "3Dutc",
-            604_800_000: "1Wutc",
-            2_592_000_000: "1Mutc",
-        }
-        if utc and ms in mapping_utc:
-            return mapping_utc[ms]
-        if ms in mapping:
-            return mapping[ms]
-        raise ValueError(
-            f"Interval '{self!s}' cannot be represented in Bitget granularity format"
         )
 
     def to_milliseconds(self) -> int:

@@ -6,7 +6,7 @@ Also broadcasts every ticker snapshot to the REDIS_HASH_KEY pubsub channel.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import orjson
 from redis.asyncio import Redis
@@ -35,7 +35,7 @@ class Storage:
 
     def __init__(self) -> None:
         """Initialize the tickers storage handler and set up Redis connection."""
-        self.redis: "Redis | None" = None
+        self.redis: Redis | None = None
         self._is_connected: bool = False
 
     async def setup(self) -> None:
@@ -74,7 +74,7 @@ class Storage:
         self,
         channel: Channel,
         symbol: str,
-        snapshot: Dict[str, Any],
+        snapshot: dict[str, Any],
         price: float,
     ) -> None:
         """Broadcast ticker, store in Redis, and notify pubsub."""

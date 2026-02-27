@@ -7,7 +7,8 @@ forwarding data to all registered consumer instances.
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from streamer.consumers.base import BaseConsumer
 from streamer.types import Channel, DataType
@@ -23,7 +24,7 @@ class Broadcaster:
         self._consumers = consumers
 
     async def consume(
-        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+        self, channel: Channel, data_type: DataType, data: list[dict[str, Any]]
     ) -> None:
         """Send data to all consumers (in parallel), logging errors individually."""
         if data_type in ["klines", "tickers-klines"]:

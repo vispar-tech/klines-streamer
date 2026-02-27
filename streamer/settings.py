@@ -1,25 +1,25 @@
 """Application settings using Pydantic."""
 
-from typing import Annotated, Any, Literal, Set
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from yarl import URL
 
-from streamer.types import Interval
+from streamer.types import ExchangeType, Interval
 
 
 class Settings(BaseSettings):
     """Application configuration settings."""
 
-    exchange: Literal["bybit", "bingx", "bitget"] = Field(default=...)
+    exchange: ExchangeType = Field(default=...)
     # Exchange configuration
     exchange_symbols: Annotated[set[str], NoDecode] = {"BTCUSDT", "ETHUSDT"}
     exchange_load_all_symbols: bool = False
     exchange_symbols_limit: int | None = None
     exchange_symbols_refresh_interval_sec: int = 900
     exchange_socket_pool_size: int = 50
-    kline_intervals: Annotated[Set[Interval], NoDecode] = set()
+    kline_intervals: Annotated[set[Interval], NoDecode] = set()
 
     # Streaming configuration
     enable_klines_stream: bool = True
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     wss_auth_user: str | None = None
 
     # Consumer configuration
-    enabled_consumers: Annotated[Set[str], NoDecode] = {"console", "redis", "websocket"}
+    enabled_consumers: Annotated[set[str], NoDecode] = {"console", "redis", "websocket"}
 
     # Aggregator configuration
     aggregator_waiter_mode_enabled: bool = True

@@ -1,13 +1,11 @@
 """Pluggable consumers for outputting kline data."""
 
 import logging
-from typing import Dict, List, Set, Type
 
 from streamer.consumers.base import BaseConsumer
 from streamer.consumers.console import ConsoleConsumer
 from streamer.consumers.file import FileConsumer
 from streamer.consumers.redis import RedisConsumer
-from streamer.consumers.validator import ValidatorConsumer
 from streamer.consumers.websocket import WebSocketConsumer
 from streamer.storage import Storage
 
@@ -19,16 +17,15 @@ class ConsumerRegistry:
 
     def __init__(self) -> None:
         """Initialize the consumer registry."""
-        self._registry: Dict[str, Type[BaseConsumer]] = {}
+        self._registry: dict[str, type[BaseConsumer]] = {}
 
         # Register built-in consumers
         self.register("console", ConsoleConsumer)
         self.register("file", FileConsumer)
         self.register("redis", RedisConsumer)
         self.register("websocket", WebSocketConsumer)
-        self.register("validator", ValidatorConsumer)
 
-    def register(self, name: str, consumer_class: Type[BaseConsumer]) -> None:
+    def register(self, name: str, consumer_class: type[BaseConsumer]) -> None:
         """
         Register a consumer class.
 
@@ -61,7 +58,7 @@ class ConsumerRegistry:
 
         del self._registry[name]
 
-    def get_consumer_class(self, name: str) -> Type[BaseConsumer]:
+    def get_consumer_class(self, name: str) -> type[BaseConsumer]:
         """
         Get a consumer class by name.
 
@@ -79,11 +76,11 @@ class ConsumerRegistry:
 
         return self._registry[name]
 
-    def list_consumers(self) -> List[str]:
+    def list_consumers(self) -> list[str]:
         """List all registered consumer names."""
         return list(self._registry.keys())
 
-    def validate_consumers(self, consumer_names: Set[str]) -> List[str]:
+    def validate_consumers(self, consumer_names: set[str]) -> list[str]:
         """
         Validate a list of consumer names.
 
@@ -107,8 +104,8 @@ class ConsumerRegistry:
         return errors
 
     def create_consumers(
-        self, storage: Storage, consumer_names: Set[str]
-    ) -> List[BaseConsumer]:
+        self, storage: Storage, consumer_names: set[str]
+    ) -> list[BaseConsumer]:
         """
         Create consumer instances for the given names.
 
@@ -139,7 +136,7 @@ class ConsumerManager:
     _logger = logging.getLogger(__name__)
 
     @classmethod
-    def register_consumer(cls, name: str, consumer_class: Type[BaseConsumer]) -> None:
+    def register_consumer(cls, name: str, consumer_class: type[BaseConsumer]) -> None:
         """
         Register a custom consumer class.
 
@@ -150,14 +147,14 @@ class ConsumerManager:
         cls._registry.register(name, consumer_class)
 
     @classmethod
-    def list_available_consumers(cls) -> List[str]:
+    def list_available_consumers(cls) -> list[str]:
         """List all available consumer names."""
         return cls._registry.list_consumers()
 
     @classmethod
     async def setup_consumers(
-        cls, storage: Storage, enabled_consumers: Set[str]
-    ) -> List[BaseConsumer]:
+        cls, storage: Storage, enabled_consumers: set[str]
+    ) -> list[BaseConsumer]:
         """
         Set up consumers.
 
@@ -193,7 +190,7 @@ class ConsumerManager:
             raise
 
     @classmethod
-    async def initialize_consumers(cls, consumers: List[BaseConsumer]) -> None:
+    async def initialize_consumers(cls, consumers: list[BaseConsumer]) -> None:
         """
         Initialize all consumers (setup phase).
 
@@ -211,7 +208,7 @@ class ConsumerManager:
                 raise
 
     @classmethod
-    async def start_consumers(cls, consumers: List[BaseConsumer]) -> None:
+    async def start_consumers(cls, consumers: list[BaseConsumer]) -> None:
         """
         Start all consumers.
 
@@ -229,7 +226,7 @@ class ConsumerManager:
                 raise
 
     @classmethod
-    async def shutdown_consumers(cls, consumers: List[BaseConsumer]) -> None:
+    async def shutdown_consumers(cls, consumers: list[BaseConsumer]) -> None:
         """
         Shutdown all consumers gracefully.
 

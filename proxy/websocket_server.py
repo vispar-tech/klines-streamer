@@ -5,7 +5,8 @@ import contextlib
 import gzip
 import logging
 import uuid
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import orjson
 from websockets.asyncio.server import Server, ServerConnection, serve
@@ -216,7 +217,7 @@ class WebSocketServer:
             logger.warning(f"Authentication failed for: {websocket.remote_address}")
             return False
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await self.send_json(websocket, {"error": "Authentication timeout"})
             logger.warning(f"Authentication timeout for: {websocket.remote_address}")
             return False

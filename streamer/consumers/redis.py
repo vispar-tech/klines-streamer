@@ -1,6 +1,6 @@
 """Publish kline data to Redis."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 import orjson
 from redis.asyncio import Redis
@@ -18,7 +18,7 @@ class RedisConsumer(BaseConsumer):
     def __init__(self, storage: Storage, name: str = "redis") -> None:
         """Initialize Redis consumer."""
         super().__init__(storage, name)
-        self.redis: "Redis | None" = None
+        self.redis: Redis | None = None
 
     def validate(self) -> None:
         """Validate Redis consumer settings."""
@@ -53,7 +53,7 @@ class RedisConsumer(BaseConsumer):
         # Initial data publication is omitted as requested
 
     async def consume(
-        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+        self, channel: Channel, data_type: DataType, data: list[dict[str, Any]]
     ) -> None:
         """Publish kline data to Redis."""
         if not self._is_running or not self.redis:

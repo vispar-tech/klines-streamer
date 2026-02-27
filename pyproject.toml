@@ -62,6 +62,7 @@ exclude = ["debug"]
 [tool.ruff.lint]
 select = [
     "E",
+    "UP",
     "F",
     "W",
     "I",

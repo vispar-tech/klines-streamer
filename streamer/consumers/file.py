@@ -5,7 +5,7 @@ import json
 from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
@@ -60,7 +60,7 @@ class FileConsumer(BaseConsumer):
         self,
         channel: Channel,
         data_type: DataType,
-        data: List[Dict[str, Any]],
+        data: list[dict[str, Any]],
     ) -> None:
         """Save streaming data to file."""
         if not self._is_running or not data:
@@ -145,7 +145,7 @@ class FileConsumer(BaseConsumer):
             self._remove_empty_dirs(hour_dir.parent)
             return local_removed_files, 1
 
-    def _walk_hour_dirs(self) -> List[Path]:
+    def _walk_hour_dirs(self) -> list[Path]:
         """Yield all hour-level directories in the data hierarchy."""
         hour_dirs: list[Path] = []
         if not self._base_path.exists():

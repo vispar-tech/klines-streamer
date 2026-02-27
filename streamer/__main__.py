@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import sys
-from typing import List, Optional
 
 import uvloop
 
@@ -18,7 +17,7 @@ from streamer.websockets import WebSocketClient, get_websocket_client
 logger = logging.getLogger("streamer")
 
 
-async def _validate_startup() -> tuple[Storage, List[BaseConsumer]]:
+async def _validate_startup() -> tuple[Storage, list[BaseConsumer]]:
     # Create main storage processor that will storage all data from websocket
     storage = Storage()
     await storage.setup()
@@ -43,9 +42,9 @@ async def main_async() -> None:
     setup_logging()
     logger.info("Starting Bybit Klines Streamer")
 
-    consumers: List[BaseConsumer] = []
-    websocket_client: Optional[WebSocketClient] = None
-    spot_websocket_client: Optional[WebSocketClient] = None
+    consumers: list[BaseConsumer] = []
+    websocket_client: WebSocketClient | None = None
+    spot_websocket_client: WebSocketClient | None = None
 
     try:
         storage, consumers = await _validate_startup()
@@ -73,11 +72,11 @@ async def main_async() -> None:
             )
 
             if settings.enable_spot_stream:
-                if settings.exchange == "bingx":
-                    logger.error("Spot streaming is not supported for BingX exchange.")
-                    sys.exit(1)
-                if settings.exchange == "bitget":
-                    logger.error("Spot streaming is not supported for Bitget exchange.")
+                if settings.exchange != "bybit":
+                    logger.error(
+                        "Spot streaming is not supported for %s exchange.",
+                        settings.exchange,
+                    )
                     sys.exit(1)
                 # The same for spot data
                 spot_aggregator = Aggregator(broadcaster, storage, channel="spot")

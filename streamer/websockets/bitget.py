@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Any, Callable, Coroutine, Dict, Set
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import orjson
 from websockets import Data
@@ -26,8 +27,8 @@ class BitgetWebSocketClient(WebSocketClient):
     def __init__(
         self,
         channel: Channel,
-        on_trade: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
-        on_ticker: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
+        on_trade: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
+        on_ticker: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
         on_symbols_count_changed: Callable[[int], None] | None = None,
     ) -> None:
         """Initialize Bitget WebSocket client."""
@@ -94,9 +95,9 @@ class BitgetWebSocketClient(WebSocketClient):
         """Return the Bitget WebSocket URL."""
         return "wss://ws.bitget.com/v2/ws/public"
 
-    async def _subscribe(self, websocket: ClientConnection, symbols: Set[str]) -> None:
+    async def _subscribe(self, websocket: ClientConnection, symbols: set[str]) -> None:
         """Subscribe to streams for assigned symbols (including tickers)."""
-        args: list[Dict[str, str]] = []
+        args: list[dict[str, str]] = []
 
         if self.trade_enabled:
             args += [
@@ -157,7 +158,7 @@ class BitgetWebSocketClient(WebSocketClient):
                         f"Received 'pong' on channel {self.channel} (sock {socket_id})"
                     )
                     # Received pong, continue loop
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.error(
                         f"No 'pong' response from Bitget on {self.channel}, "
                         f"reconnecting socket {socket_id}"

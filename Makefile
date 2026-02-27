@@ -13,9 +13,17 @@ install-proxy: ## Install proxy dependencies
 	@echo "📦 Installing proxy dependencies..."
 	@poetry install --with proxy
 
-run: ## Run the Bybit klines streamer
-	@echo "🚀 Running Bybit klines streamer..."
-	@STREAMER_EXCHANGE=bybit poetry run python -m streamer
+run-%: ## Run the klines streamer for the given exchange (usage: make run-binance, make run-bybit, etc.)
+	@echo "🚀 Running klines streamer for exchange '$*'..."
+	@if [ -f .env.$* ]; then \
+		echo '🔑 Found .env.$*, exporting environment variables...'; \
+		set -o allexport; \
+		. .env.$*; \
+		set +o allexport; \
+	fi; \
+	STREAMER_EXCHANGE=$* poetry run python -m streamer
+
+run: run-bybit ## Default run (for Bybit)
 
 run-proxy: ## Run the proxy server
 	@echo "🚀 Running proxy server..."

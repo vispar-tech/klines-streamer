@@ -5,7 +5,6 @@ import logging
 import signal
 import sys
 from types import FrameType
-from typing import Optional
 
 import uvloop
 
@@ -21,7 +20,7 @@ logger = logging.getLogger("proxy")
 def setup_signal_handlers(stop_event: asyncio.Event) -> None:
     """Register signal handlers to set the stop event on termination signals."""
 
-    def signal_handler(signum: int, frame: Optional[FrameType]) -> None:
+    def signal_handler(signum: int, frame: FrameType | None) -> None:
         logger.info(f"Received signal {signum}, shutting down...")
         stop_event.set()
 

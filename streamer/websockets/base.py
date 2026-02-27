@@ -3,7 +3,8 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Coroutine, Dict, List, Set
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import websockets
 from websockets.asyncio.client import ClientConnection
@@ -22,8 +23,8 @@ class WebSocketClient(ABC):
     def __init__(
         self,
         channel: Channel,
-        on_trade: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
-        on_ticker: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
+        on_trade: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
+        on_ticker: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
         on_symbols_count_changed: Callable[[int], None] | None = None,
     ) -> None:
         """Initialize WebSocket client with pool support.
@@ -46,9 +47,9 @@ class WebSocketClient(ABC):
 
         # Pool management
         self._running = False
-        self._socket_tasks: List[asyncio.Task[None]] = []
-        self._sockets: Dict[int, ClientConnection] = {}
-        self._subscribed_symbols: Dict[int, Set[str]] = {}
+        self._socket_tasks: list[asyncio.Task[None]] = []
+        self._sockets: dict[int, ClientConnection] = {}
+        self._subscribed_symbols: dict[int, set[str]] = {}
         self._symbols_refresh_task: asyncio.Task[None] | None = None
 
     @abstractmethod
@@ -81,7 +82,7 @@ class WebSocketClient(ABC):
             self._subscribed_symbols[i] = socket_symbols
 
         # Create and start all sockets concurrently
-        socket_tasks: List[asyncio.Task[None]] = []
+        socket_tasks: list[asyncio.Task[None]] = []
         for i, socket_symbols in enumerate(distributed_symbols):
             if len(socket_symbols) == 0:
                 continue
@@ -130,7 +131,7 @@ class WebSocketClient(ABC):
             self._symbols_refresh_task.cancel()
             try:
                 await asyncio.wait_for(self._symbols_refresh_task, timeout=3)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "Timeout waiting for symbols refresh task to cancel "
                     f"on channel {self.channel}"
@@ -181,7 +182,7 @@ class WebSocketClient(ABC):
                     )
                     continue
 
-                current_symbols: Set[str] = set()
+                current_symbols: set[str] = set()
                 for sym_set in self._subscribed_symbols.values():
                     current_symbols.update(sym_set)
                 to_add = new_symbols - current_symbols
@@ -202,7 +203,7 @@ class WebSocketClient(ABC):
         except Exception as e:
             logger.error("Error in symbols refresh on channel %s: %s", self.channel, e)
 
-    async def _add_new_symbols(self, new_symbols: List[str]) -> None:
+    async def _add_new_symbols(self, new_symbols: list[str]) -> None:
         """Add new symbols to pool and subscribe only to them on each socket."""
         if not new_symbols:
             return
@@ -210,7 +211,7 @@ class WebSocketClient(ABC):
             return
 
         pool_sizes = {i: len(s) for i, s in self._subscribed_symbols.items()}
-        new_symbol_map: Dict[int, List[str]] = {i: [] for i in self._subscribed_symbols}
+        new_symbol_map: dict[int, list[str]] = {i: [] for i in self._subscribed_symbols}
 
         for symbol in new_symbols:
             idx = min(pool_sizes, key=lambda k: pool_sizes[k])
@@ -239,7 +240,7 @@ class WebSocketClient(ABC):
                         e,
                     )
 
-    def _distribute_symbols(self, symbols: set[str]) -> List[set[str]]:
+    def _distribute_symbols(self, symbols: set[str]) -> list[set[str]]:
         """Distribute symbols across socket pool."""
         if self.pool_size <= 1:
             return [set(symbols)]
@@ -251,7 +252,7 @@ class WebSocketClient(ABC):
 
         return list(filter(lambda symbols: len(symbols), distributed))
 
-    async def _run_socket(self, socket_id: int, symbols: Set[str]) -> None:
+    async def _run_socket(self, socket_id: int, symbols: set[str]) -> None:
         """Run a single WebSocket connection."""
         while self._running:
             try:
@@ -299,7 +300,7 @@ class WebSocketClient(ABC):
         logger.info(f"Socket {socket_id} stopped on channel {self.channel}")
 
     @abstractmethod
-    async def _subscribe(self, websocket: ClientConnection, symbols: Set[str]) -> None:
+    async def _subscribe(self, websocket: ClientConnection, symbols: set[str]) -> None:
         """Subscribe to streams for assigned symbols."""
 
     @abstractmethod

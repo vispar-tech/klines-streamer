@@ -226,6 +226,91 @@ class BitgetSymbolLoader(BaseSymbolLoader):
             return set()
 
 
+class OkxSymbolLoader(BaseSymbolLoader):
+    """Symbol loader for OKX exchange (USDT-M perpetual swaps)."""
+
+    def __init__(self) -> None:
+        """Initialize OKX symbol loader."""
+        super().__init__("Okx")
+        self.instruments_url = "https://www.okx.com/api/v5/public/instruments"
+        self.inst_type = "SWAP"  # Perpetual swaps
+
+    async def load_all_symbols(self, limit: int | None = None) -> set[str]:
+        """Load all trading symbols from OKX API.
+
+        (Only USDT-margined swaps, state=live)
+        """
+        try:
+            timeout = ClientTimeout(total=20)
+            params = {
+                "instType": self.inst_type,
+            }
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.get(self.instruments_url, params=params) as response,
+            ):
+                response.raise_for_status()
+                data = orjson.loads(await response.read())
+            # OKX returns: { "code": "0", "msg": "", "data": [ ... ] }
+            contracts: list[dict[str, Any]] = data.get("data", [])
+            symbols = [
+                str(item["uly"]) for item in contracts if item.get("state") == "live"
+            ]
+            symbols = [s for s in symbols if s]
+
+            if limit is not None:
+                symbols = symbols[:limit]
+
+            logger.info(f"Loaded {len(symbols)} symbols from OKX API")
+            return set(symbols)
+        except Exception as exc:
+            logger.warning(f"Failed to load symbols from OKX API: {exc}")
+            return set()
+
+
+class BinanceSymbolLoader(BaseSymbolLoader):
+    """Symbol loader for Binance exchange (USDT-M perpetual contracts)."""
+
+    def __init__(self) -> None:
+        """Initialize Binance symbol loader."""
+        super().__init__("Binance")
+        self.exchange_info_url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+
+    async def load_all_symbols(self, limit: int | None = None) -> set[str]:
+        """
+        Load all USDT-margined perpetual contract trading symbols.
+
+        Binance API (GET /fapi/v1/exchangeInfo).
+        """
+        try:
+            timeout = ClientTimeout(total=20)
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.get(self.exchange_info_url) as response,
+            ):
+                response.raise_for_status()
+                data = orjson.loads(await response.read())
+            # Exchange Info returns {"symbols": [...]}
+            contracts: list[dict[str, Any]] = data.get("symbols", [])
+            symbols = [
+                str(item["symbol"])
+                for item in contracts
+                if item.get("status") == "TRADING"
+                and item.get("contractType") == "PERPETUAL"
+                and item.get("quoteAsset") == "USDT"
+            ]
+            symbols = [s for s in symbols if s]
+
+            if limit is not None:
+                symbols = symbols[:limit]
+
+            logger.info(f"Loaded {len(symbols)} symbols from Binance API")
+            return set(symbols)
+        except Exception as exc:
+            logger.warning(f"Failed to load symbols from Binance API: {exc}")
+            return set()
+
+
 def get_symbol_loader() -> BaseSymbolLoader:
     """Return the appropriate symbol loader based on exchange setting."""
     if settings.exchange == "bingx":
@@ -234,7 +319,10 @@ def get_symbol_loader() -> BaseSymbolLoader:
         return BybitSymbolLoader()
     if settings.exchange == "bitget":
         return BitgetSymbolLoader()
-    # Default fallback
+    if settings.exchange == "okx":
+        return OkxSymbolLoader()
+    if settings.exchange == "binance":
+        return BinanceSymbolLoader()
     raise ValueError(f"Unsupported exchange for symbol loading: {settings.exchange!r}")
 
 

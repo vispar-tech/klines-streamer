@@ -1,6 +1,6 @@
 """Module for normalizing and passing through trade and ticker data."""
 
-from typing import Any, Dict
+from typing import Any
 
 from streamer.settings import settings
 from streamer.types import Channel
@@ -25,6 +25,7 @@ BINGX_FIELDS_MAP = {
     "A": "ask1Price",
     "a": "ask1Size",
 }
+
 
 BITGET_FIELDS_MAP = {
     "lastPr": "lastPr",
@@ -51,30 +52,70 @@ BITGET_FIELDS_MAP = {
     "ts": "eventTime",
 }
 
+BINANCE_FIELDS_MAP = {
+    "e": "eventType",  # Event type, e.g. "24hrTicker"
+    "E": "eventTime",  # Event time
+    "s": "symbol",  # Symbol, e.g. "BTCUSDT"
+    "p": "priceChange24h",  # Price change
+    "P": "price24hPcnt",  # Price change percent
+    "w": "weightedAvgPrice",  # Weighted average price
+    "c": "currentPrice",  # Last (current) price
+    "Q": "lastQuantity",  # Last quantity
+    "o": "openPrice24h",  # Open price
+    "h": "highPrice24h",  # High price
+    "l": "lowPrice24h",  # Low price
+    "v": "volume24h",  # Total traded base asset volume
+    "q": "turnover24h",  # Total traded quote asset volume
+    "O": "firstTradeTime24h",  # Statistics open time
+    "C": "lastTradeTime24h",  # Statistics close time
+    "F": "firstTradeId",  # First trade ID
+    "L": "lastTradeId",  # Last trade Id
+    "n": "tradesCount24h",  # Total number of trades
+}
+
+OKX_INDEX_TICKERS_FIELDS_MAP = {
+    "instId": "symbol",  # Index, e.g. BTC-USDT
+    "idxPx": "currentPrice",  # Latest Index Price (string)
+    "open24h": "openPrice24h",  # Open price in the past 24 hours (string)
+    "high24h": "highPrice24h",  # Highest price in the past 24 hours (string)
+    "low24h": "lowPrice24h",  # Lowest price in the past 24 hours (string)
+    "sodUtc0": "openPriceUTC0",  # Open price in the UTC 0 (string)
+    "sodUtc8": "openPriceUTC8",  # Open price in the UTC 8 (string)
+    "ts": "eventTime",  # Update time, Unix ms
+}
+
 
 class BaseNormalizer:
     """Base class for normalizing trade and ticker data."""
 
-    def handle_trade(self, trade_data: Dict[str, Any], channel: Channel) -> Any:
+    def handle_trade(
+        self, trade_data: dict[str, Any], channel: Channel
+    ) -> list[dict[str, Any]] | None:
         """Normalize and pass through trade data."""
-        return trade_data
+        raise NotImplementedError("handle_trade is not implemented")
 
-    def handle_ticker(self, ticker_data: Dict[str, Any], channel: Channel) -> Any:
+    def handle_ticker(
+        self, ticker_data: dict[str, Any], channel: Channel
+    ) -> dict[str, Any] | None:
         """Normalize and pass through ticker data."""
-        return ticker_data
+        raise NotImplementedError("handle_ticker is not implemented")
 
 
 class BingxNormalizer(BaseNormalizer):
     """Normalizer for BingX."""
 
-    def handle_trade(self, trade_data: Dict[str, Any], channel: Channel) -> Any:
+    def handle_trade(
+        self, trade_data: dict[str, Any], channel: Channel
+    ) -> list[dict[str, Any]] | None:
         """Normalize BingX trade data."""
         for item in trade_data["data"]:
             if "q" in item:
                 item["v"] = item.pop("q")
-        return trade_data["data"]
+        return trade_data["data"]  # type: ignore[no-any-return]
 
-    def handle_ticker(self, ticker_data: Dict[str, Any], channel: Channel) -> Any:
+    def handle_ticker(
+        self, ticker_data: dict[str, Any], channel: Channel
+    ) -> dict[str, Any] | None:
         """Normalize BingX ticker data."""
         data = ticker_data["data"]
 
@@ -104,11 +145,15 @@ class BingxNormalizer(BaseNormalizer):
 class BybitNormalizer(BaseNormalizer):
     """Normalizer for Bybit."""
 
-    def handle_trade(self, trade_data: Dict[str, Any], channel: Channel) -> Any:
+    def handle_trade(
+        self, trade_data: dict[str, Any], channel: Channel
+    ) -> list[dict[str, Any]] | None:
         """Normalize Bybit trade data."""
-        return trade_data["data"]
+        return trade_data["data"]  # type: ignore[no-any-return]
 
-    def handle_ticker(self, ticker_data: Dict[str, Any], channel: Channel) -> Any:
+    def handle_ticker(
+        self, ticker_data: dict[str, Any], channel: Channel
+    ) -> dict[str, Any] | None:
         """Normalize Bybit ticker data."""
         if channel == "linear" and "markPrice" in ticker_data["data"]:
             ticker_data["data"]["currentPrice"] = ticker_data["data"].pop("markPrice")
@@ -121,7 +166,9 @@ class BybitNormalizer(BaseNormalizer):
 class BitgetNormalizer(BaseNormalizer):
     """Normalizer for Bitget."""
 
-    def handle_trade(self, trade_data: Dict[str, Any], channel: Channel) -> Any:
+    def handle_trade(
+        self, trade_data: dict[str, Any], channel: Channel
+    ) -> list[dict[str, Any]] | None:
         """If trade normalization is needed, implement it here."""
         # For now, just pass through the data list
         return [
@@ -134,7 +181,9 @@ class BitgetNormalizer(BaseNormalizer):
             for trade in trade_data["data"]
         ]
 
-    def handle_ticker(self, ticker_data: Dict[str, Any], channel: Channel) -> Any:
+    def handle_ticker(
+        self, ticker_data: dict[str, Any], channel: Channel
+    ) -> dict[str, Any] | None:
         """Normalize Bitget ticker data."""
         normalized_data: dict[str, Any] = {}
 
@@ -157,6 +206,76 @@ class BitgetNormalizer(BaseNormalizer):
         }
 
 
+class OkxNormalizer(BaseNormalizer):
+    """Normalizer for Okx."""
+
+    def handle_trade(
+        self, trade_data: dict[str, Any], channel: Channel
+    ) -> list[dict[str, Any]] | None:
+        """If trade normalization is needed, implement it here."""
+        # todo
+        return None
+
+    def handle_ticker(
+        self, ticker_data: dict[str, Any], channel: Channel
+    ) -> dict[str, Any] | None:
+        """Normalize ticker data."""
+        normalized_data: dict[str, Any] = {}
+
+        for k, v in ticker_data.items():
+            if k in OKX_INDEX_TICKERS_FIELDS_MAP:
+                normalized_data[OKX_INDEX_TICKERS_FIELDS_MAP[k]] = v
+            else:
+                normalized_data[k] = v  # fallback, just in case
+
+        symbol = ticker_data["instId"]
+        topic = f"tickers.{symbol}"
+
+        ts = ticker_data["ts"]
+
+        return {
+            "topic": topic,
+            "type": "snapshot",
+            "data": normalized_data,
+            "ts": ts,
+        }
+
+
+class BinanceNormalizer(BaseNormalizer):
+    """Normalizer for Binance."""
+
+    def handle_trade(
+        self, trade_data: dict[str, Any], channel: Channel
+    ) -> list[dict[str, Any]] | None:
+        """If trade normalization is needed, implement it here."""
+        # todo
+        return None
+
+    def handle_ticker(
+        self, ticker_data: dict[str, Any], channel: Channel
+    ) -> dict[str, Any] | None:
+        """Normalize ticker data."""
+        normalized_data: dict[str, Any] = {}
+
+        for k, v in ticker_data.items():
+            if k in BINANCE_FIELDS_MAP:
+                normalized_data[BINANCE_FIELDS_MAP[k]] = v
+            else:
+                normalized_data[k] = v  # fallback, just in case
+
+        symbol = ticker_data["s"]
+        topic = f"tickers.{symbol}"
+
+        ts = ticker_data["E"]
+
+        return {
+            "topic": topic,
+            "type": "snapshot",
+            "data": normalized_data,
+            "ts": ts,
+        }
+
+
 def get_normalizer() -> BaseNormalizer:
     """Return the appropriate normalizer based on exchange setting."""
     if settings.exchange == "bingx":
@@ -165,6 +284,10 @@ def get_normalizer() -> BaseNormalizer:
         return BybitNormalizer()
     if settings.exchange == "bitget":
         return BitgetNormalizer()
+    if settings.exchange == "okx":
+        return OkxNormalizer()
+    if settings.exchange == "binance":
+        return BinanceNormalizer()
     raise RuntimeError(f"No normalizer found for exchange: {settings.exchange}")
 
 

@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import Any, Dict, Set
+from typing import Any
 
 from streamer.broadcaster import Broadcaster
 from streamer.normalizer import normalizer
@@ -26,7 +26,6 @@ class Aggregator:
         "_broadcaster",
         "_channel",
         "_interval_ms_map",
-        "_interval_str_ms_map",
         "_intervals_sorted",
         "_min_interval_ms",
         "_running",
@@ -60,20 +59,18 @@ class Aggregator:
 
         # Initialize interval mappings and config
         intervals = settings.kline_intervals
-        self._interval_ms_map: Dict["Interval", int] = {
+        self._interval_ms_map: dict[Interval, int] = {
             i: i.to_milliseconds() for i in intervals
         }
-        self._interval_str_ms_map: Dict[str, int] = {
-            i.to_bybit(): i.to_milliseconds() for i in intervals
-        }
+
         self._intervals_sorted = tuple(sorted(self._interval_ms_map.values()))
         self._min_interval_ms = self._intervals_sorted[0]
         self._total_symbols_count = len(settings.exchange_symbols)
 
         # Initialize trades mode state
-        self._trades_buckets: Dict[str, Dict[int, Dict[int, Dict[str, Any]]]] = {}
-        self._trades_first_kline_skipped: Dict[str, Dict[int, bool]] = {}
-        self._trades_last_close: Dict[str, Dict[int, Any]] = {}
+        self._trades_buckets: dict[str, dict[int, dict[int, dict[str, Any]]]] = {}
+        self._trades_first_kline_skipped: dict[str, dict[int, bool]] = {}
+        self._trades_last_close: dict[str, dict[int, Any]] = {}
         self._trades_last_boundary: dict[int, int] = {}
         # For waiter mode
         self._trades_waiter_mode_enabled = settings.aggregator_waiter_mode_enabled
@@ -81,9 +78,9 @@ class Aggregator:
 
         # Initialize tickers state
         self._tickers_snapshots: dict[str, dict[str, Any]] = {}
-        self._tickers_buckets: Dict[str, Dict[int, Dict[int, Dict[str, Any]]]] = {}
-        self._tickers_first_kline_skipped: Dict[str, Dict[int, bool]] = {}
-        self._tickers_last_close: Dict[str, Dict[int, dict[str, float]]] = {}
+        self._tickers_buckets: dict[str, dict[int, dict[int, dict[str, Any]]]] = {}
+        self._tickers_first_kline_skipped: dict[str, dict[int, bool]] = {}
+        self._tickers_last_close: dict[str, dict[int, dict[str, float]]] = {}
         self._tickers_last_boundary: dict[int, int] = {}
 
         # Pre-compute numeric fields for this channel
@@ -98,7 +95,7 @@ class Aggregator:
         # Log initialization info
         self._log_initialization_info(intervals)
 
-    def _log_initialization_info(self, intervals: Set[Interval]) -> None:
+    def _log_initialization_info(self, intervals: set[Interval]) -> None:
         """Log aggregator initialization details with all enabled features."""
         if not logger.isEnabledFor(logging.INFO):
             return
@@ -157,9 +154,12 @@ class Aggregator:
                 self._channel,
             )
 
-    async def handle_trade(self, raw_message: Dict[str, Any]) -> None:
+    async def handle_trade(self, raw_message: dict[str, Any]) -> None:
         """Handle trade event and update OHLC buckets per bucket_start."""
         trades_data = normalizer.handle_trade(raw_message, self._channel)
+        if trades_data is None:
+            return
+
         trades_buckets = self._trades_buckets
         trades_last_close = self._trades_last_close
         trades_last_boundary = self._trades_last_boundary
@@ -225,7 +225,7 @@ class Aggregator:
                     existing_bucket["n"] += 1
                     existing_bucket["c"] = trade_price
 
-    async def handle_ticker(self, raw_message: Dict[str, Any]) -> None:
+    async def handle_ticker(self, raw_message: dict[str, Any]) -> None:
         """Handle ticker event and update all related streams."""
         # Get references for faster access
         broadcaster = self._broadcaster
@@ -233,6 +233,8 @@ class Aggregator:
         channel = self._channel
 
         message = normalizer.handle_ticker(raw_message, channel)
+        if message is None:
+            return
 
         ticker_topic = message["topic"]
 

@@ -1,6 +1,6 @@
 """Print kline data to the console."""
 
-from typing import Any, Dict, List
+from typing import Any
 
 from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
@@ -31,7 +31,7 @@ class ConsoleConsumer(BaseConsumer):
         self,
         channel: Channel,
         data_type: DataType,
-        data: List[Dict[str, Any]],
+        data: list[dict[str, Any]],
     ) -> None:
         """Print streaming data to console."""
         if not self._is_running or not data:

@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
 
 from streamer.storage import Storage
 from streamer.types import Channel, DataType
@@ -29,7 +29,7 @@ class BaseConsumer(ABC):
 
     @abstractmethod
     async def consume(
-        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+        self, channel: Channel, data_type: DataType, data: list[dict[str, Any]]
     ) -> None:
         """Consume and process data."""
 

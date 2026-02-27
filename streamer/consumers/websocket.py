@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import gzip
-from typing import Any, Dict, List, Set
+from typing import Any
 
 import orjson
 from websockets.asyncio.server import Server, ServerConnection, serve
@@ -25,7 +25,7 @@ class WebSocketConnectionManager:
 
     def __init__(self) -> None:
         """Initialize empty WebSocket connection set."""
-        self.connections: Set[ServerConnection] = set()
+        self.connections: set[ServerConnection] = set()
 
     def add(self, ws: ServerConnection) -> None:
         """Add a WebSocket connection to the set."""
@@ -133,7 +133,7 @@ class WebSocketConsumer(BaseConsumer):
             await self.send_json(ws, {"error": "Authentication failed"})
             self.logger.warning(f"Authentication failed for: {ws.remote_address}")
             return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await self.send_json(ws, {"error": "Authentication timeout"})
             self.logger.warning(f"Authentication timeout for: {ws.remote_address}")
             return False
@@ -234,7 +234,7 @@ class WebSocketConsumer(BaseConsumer):
             raise
 
     async def consume(
-        self, channel: Channel, data_type: DataType, data: List[Dict[str, Any]]
+        self, channel: Channel, data_type: DataType, data: list[dict[str, Any]]
     ) -> None:
         """Broadcast kline data to WebSocket clients using gzip compression."""
         if not self._is_running:

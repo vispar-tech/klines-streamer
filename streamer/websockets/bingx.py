@@ -5,7 +5,8 @@ import gzip
 import io
 import logging
 import uuid
-from typing import Any, Callable, Coroutine, Dict, Set
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import orjson
 from websockets import Data
@@ -24,8 +25,8 @@ class BingxWebSocketClient(WebSocketClient):
     def __init__(
         self,
         channel: Channel,
-        on_trade: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
-        on_ticker: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]],
+        on_trade: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
+        on_ticker: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
         on_symbols_count_changed: Callable[[int], None] | None = None,
     ) -> None:
         """Initialize BingX WebSocket client."""
@@ -85,7 +86,7 @@ class BingxWebSocketClient(WebSocketClient):
         # BingX uses a single market data endpoint
         return "wss://open-api-swap.bingx.com/swap-market"
 
-    async def _subscribe(self, websocket: ClientConnection, symbols: Set[str]) -> None:
+    async def _subscribe(self, websocket: ClientConnection, symbols: set[str]) -> None:
         """Subscribe to streams for assigned symbols (including tickers)."""
         # Subscribe to each symbol's streams
         for symbol in symbols:
