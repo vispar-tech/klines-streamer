@@ -1,13 +1,20 @@
 version: "3"
 
+x-streamer-base: &streamer-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  networks:
+    - shared
+  volumes:
+    - ./logs:/usr/src/logs
+  env_file:
+    - .env
+
 services:
   streamer-bybit:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *streamer-base
     container_name: streamer-bybit
-    networks:
-      - shared
     volumes:
       - ./logs:/usr/src/logs
       - ./output/bybit:/usr/src/output
@@ -18,12 +25,8 @@ services:
       - STREAMER_EXCHANGE=bybit
 
   streamer-bingx:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *streamer-base
     container_name: streamer-bingx
-    networks:
-      - shared
     volumes:
       - ./logs:/usr/src/logs
       - ./output/bingx:/usr/src/output
@@ -34,12 +37,8 @@ services:
       - STREAMER_EXCHANGE=bingx
 
   streamer-bitget:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *streamer-base
     container_name: streamer-bitget
-    networks:
-      - shared
     volumes:
       - ./logs:/usr/src/logs
       - ./output/bitget:/usr/src/output
@@ -48,6 +47,30 @@ services:
       - .env.bitget
     environment:
       - STREAMER_EXCHANGE=bitget
+
+  streamer-binance:
+    <<: *streamer-base
+    container_name: streamer-binance
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/binance:/usr/src/output
+    env_file:
+      - .env
+      - .env.binance
+    environment:
+      - STREAMER_EXCHANGE=binance
+
+  streamer-okx:
+    <<: *streamer-base
+    container_name: streamer-okx
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/okx:/usr/src/output
+    env_file:
+      - .env
+      - .env.okx
+    environment:
+      - STREAMER_EXCHANGE=okx
 
   streamer-proxy:
     build:
@@ -66,6 +89,8 @@ services:
       - streamer-bybit
       - streamer-bingx
       - streamer-bitget
+      - streamer-binance
+      - streamer-okx
 
 networks:
   shared:

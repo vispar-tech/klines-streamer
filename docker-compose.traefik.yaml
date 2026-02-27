@@ -6,15 +6,22 @@ networks:
   shared:
     external: true
 
+x-streamer-base: &streamer-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  networks:
+    - traefiktointernet
+    - shared
+  volumes:
+    - ./logs:/usr/src/logs
+  env_file:
+    - .env
+
 services:
   streamer-bybit:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *streamer-base
     container_name: streamer-bybit
-    networks:
-      - traefiktointernet
-      - shared
     volumes:
       - ./logs:/usr/src/logs
       - ./output/bybit:/usr/src/output
@@ -25,13 +32,8 @@ services:
       - STREAMER_EXCHANGE=bybit
 
   streamer-bingx:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *streamer-base
     container_name: streamer-bingx
-    networks:
-      - traefiktointernet
-      - shared
     volumes:
       - ./logs:/usr/src/logs
       - ./output/bingx:/usr/src/output
@@ -42,13 +44,8 @@ services:
       - STREAMER_EXCHANGE=bingx
 
   streamer-bitget:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *streamer-base
     container_name: streamer-bitget
-    networks:
-      - traefiktointernet
-      - shared
     volumes:
       - ./logs:/usr/src/logs
       - ./output/bitget:/usr/src/output
@@ -57,6 +54,30 @@ services:
       - .env.bitget
     environment:
       - STREAMER_EXCHANGE=bitget
+
+  streamer-binance:
+    <<: *streamer-base
+    container_name: streamer-binance
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/binance:/usr/src/output
+    env_file:
+      - .env
+      - .env.binance
+    environment:
+      - STREAMER_EXCHANGE=binance
+
+  streamer-okx:
+    <<: *streamer-base
+    container_name: streamer-okx
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/okx:/usr/src/output
+    env_file:
+      - .env
+      - .env.okx
+    environment:
+      - STREAMER_EXCHANGE=okx
 
   streamer-proxy:
     build:
@@ -71,12 +92,10 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefiktointernet
-
       - traefik.http.routers.streamer-proxy.entrypoints=websecure
       - traefik.http.routers.streamer-proxy.rule=Host(`${STREAMER_HOST}`)
       - traefik.http.routers.streamer-proxy.tls=true
       - traefik.http.routers.streamer-proxy.tls.certresolver=letsencrypt
-
       - traefik.http.services.streamer-proxy.loadbalancer.server.port=${PROXY_WEBSOCKET_PORT}
     environment:
       - PROXY_WSS_AUTH_KEY=${STREAMER_WSS_AUTH_KEY}
@@ -87,3 +106,5 @@ services:
       - streamer-bybit
       - streamer-bingx
       - streamer-bitget
+      - streamer-binance
+      - streamer-okx
