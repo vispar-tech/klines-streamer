@@ -12,6 +12,7 @@ from websockets.exceptions import ConnectionClosed
 
 from streamer.settings import settings
 from streamer.types import Channel
+from streamer.utils import validate_symbols
 from streamer.utils.symbols import load_all_symbols
 
 logger = logging.getLogger(__name__)
@@ -171,8 +172,10 @@ class WebSocketClient(ABC):
                     self.channel,
                 )
                 try:
-                    new_symbols = await load_all_symbols(
-                        settings.exchange_symbols_limit
+                    new_symbols = (
+                        await load_all_symbols(settings.exchange_symbols_limit)
+                        if settings.exchange_load_all_symbols
+                        else await validate_symbols(settings.exchange_symbols)
                     )
                 except Exception as e:
                     logger.error(
