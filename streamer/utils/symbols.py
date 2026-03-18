@@ -311,19 +311,63 @@ class BinanceSymbolLoader(BaseSymbolLoader):
             return set()
 
 
+class KucoinSymbolLoader(BaseSymbolLoader):
+    """Symbol loader for Kucoin exchange (all contracts, USDT quote currency)."""
+
+    def __init__(self) -> None:
+        """Initialize Kucoin symbol loader."""
+        super().__init__("Kucoin")
+        self.contracts_url = "https://api-futures.kucoin.com/api/v1/contracts/active"
+
+    async def load_all_symbols(self, limit: int | None = None) -> set[str]:
+        """
+        Load all trading symbols from Kucoin API.
+
+        Only symbols with quoteCurrency == 'USDT' and status == 'Open' are included.
+        """
+        try:
+            timeout = ClientTimeout(total=20)
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.get(self.contracts_url) as response,
+            ):
+                response.raise_for_status()
+                data = orjson.loads(await response.read())
+
+            contracts: list[dict[str, Any]] = data.get("data", [])
+            # Only status: Open and quoteCurrency == 'USDT'
+            symbols = [
+                str(item["symbol"])
+                for item in contracts
+                if item.get("status") == "Open" and item.get("quoteCurrency") == "USDT"
+            ]
+            symbols = [s for s in symbols if s]
+
+            if limit is not None:
+                symbols = symbols[:limit]
+
+            logger.info(f"Loaded {len(symbols)} symbols from Kucoin API")
+            return set(symbols)
+        except Exception as exc:
+            logger.warning(f"Failed to load symbols from Kucoin API: {exc}")
+            return set()
+
+
 def get_symbol_loader() -> BaseSymbolLoader:
     """Return the appropriate symbol loader based on exchange setting."""
-    if settings.exchange == "bingx":
-        return BingxSymbolLoader()
-    if settings.exchange == "bybit":
-        return BybitSymbolLoader()
-    if settings.exchange == "bitget":
-        return BitgetSymbolLoader()
-    if settings.exchange == "okx":
-        return OkxSymbolLoader()
-    if settings.exchange == "binance":
-        return BinanceSymbolLoader()
-    raise ValueError(f"Unsupported exchange for symbol loading: {settings.exchange!r}")
+    match settings.exchange:
+        case "bingx":
+            return BingxSymbolLoader()
+        case "bybit":
+            return BybitSymbolLoader()
+        case "bitget":
+            return BitgetSymbolLoader()
+        case "okx":
+            return OkxSymbolLoader()
+        case "binance":
+            return BinanceSymbolLoader()
+        case "kucoin":
+            return KucoinSymbolLoader()
 
 
 # Singleton instance based on current settings

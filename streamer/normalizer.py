@@ -26,7 +26,6 @@ BINGX_FIELDS_MAP = {
     "a": "ask1Size",
 }
 
-
 BITGET_FIELDS_MAP = {
     "lastPr": "lastPr",
     "symbol": "symbol",
@@ -82,6 +81,20 @@ OKX_INDEX_TICKERS_FIELDS_MAP = {
     "sodUtc0": "openPriceUTC0",  # Open price in the UTC 0 (string)
     "sodUtc8": "openPriceUTC8",  # Open price in the UTC 8 (string)
     "ts": "eventTime",  # Update time, Unix ms
+}
+
+KUCOIN_TICKER_FIELDS_MAP = {
+    "symbol": "symbol",
+    "price": "currentPrice",
+    "side": "side",
+    "size": "size",
+    "bestBidSize": "bid1Size",
+    "bestBidPrice": "bid1Price",
+    "bestAskPrice": "ask1Price",
+    "bestAskSize": "ask1Size",
+    "tradeId": "tradeId",
+    "sequence": "sequence",
+    "ts": "eventTime",
 }
 
 
@@ -276,19 +289,79 @@ class BinanceNormalizer(BaseNormalizer):
         }
 
 
+class KucoinNormalizer(BaseNormalizer):
+    """Normalizer for Kucoin contractMarket/ticker v1 (deprecated, V2 preferred)."""
+
+    def handle_trade(
+        self, trade_data: dict[str, Any], channel: Channel
+    ) -> list[dict[str, Any]] | None:
+        """No trade normalization for Kucoin v1 ticker; return None."""
+        # No trades in ticker stream
+        return None
+
+    def handle_ticker(
+        self, ticker_data: dict[str, Any], channel: Channel
+    ) -> dict[str, Any] | None:
+        """
+        Normalize Kucoin /contractMarket/ticker:{symbol} data.
+
+        Example incoming:
+        {
+            "topic": "/contractMarket/ticker:XBTUSDTM",
+            "type": "message",
+            "subject": "ticker",
+            "sn": 1828964168748,
+            "data": {
+                "symbol": "XBTUSDTM",
+                "sequence": 1828964168748,
+                "side": "buy",
+                "size": 2,
+                "price": "86429.7",
+                "bestBidSize": 112,
+                "bestBidPrice": "86429.6",
+                "bestAskPrice": "86429.7",
+                "tradeId": "1828964168748",
+                "bestAskSize": 1578,
+                "ts": 1740642161735000000
+            }
+        }
+        """
+        # Get the data field
+        data = ticker_data["data"]
+        normalized_data: dict[str, Any] = {}
+
+        for k, v in data.items():
+            if k in KUCOIN_TICKER_FIELDS_MAP:
+                normalized_data[KUCOIN_TICKER_FIELDS_MAP[k]] = v
+            else:
+                normalized_data[k] = v  # fallback
+
+        symbol = data["symbol"]
+        topic = f"tickers.{symbol}" if symbol else "tickers"
+        ts = data["ts"]
+        return {
+            "topic": topic,
+            "type": "snapshot",
+            "data": normalized_data,
+            "ts": ts,
+        }
+
+
 def get_normalizer() -> BaseNormalizer:
     """Return the appropriate normalizer based on exchange setting."""
-    if settings.exchange == "bingx":
-        return BingxNormalizer()
-    if settings.exchange == "bybit":
-        return BybitNormalizer()
-    if settings.exchange == "bitget":
-        return BitgetNormalizer()
-    if settings.exchange == "okx":
-        return OkxNormalizer()
-    if settings.exchange == "binance":
-        return BinanceNormalizer()
-    raise RuntimeError(f"No normalizer found for exchange: {settings.exchange}")
+    match settings.exchange:
+        case "bingx":
+            return BingxNormalizer()
+        case "bybit":
+            return BybitNormalizer()
+        case "bitget":
+            return BitgetNormalizer()
+        case "okx":
+            return OkxNormalizer()
+        case "binance":
+            return BinanceNormalizer()
+        case "kucoin":
+            return KucoinNormalizer()
 
 
 # Singleton instance based on current settings

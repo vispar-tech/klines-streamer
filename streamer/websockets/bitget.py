@@ -91,7 +91,7 @@ class BitgetWebSocketClient(WebSocketClient):
             f"{symbols_per_socket} symbols/socket, {self.pool_size} websockets"
         )
 
-    def _get_websocket_url(self, channel: Channel) -> str:
+    async def _get_websocket_url(self, channel: Channel) -> str:
         """Return the Bitget WebSocket URL."""
         return "wss://ws.bitget.com/v2/ws/public"
 

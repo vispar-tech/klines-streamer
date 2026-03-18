@@ -43,7 +43,7 @@ class OkxWebSocketClient(WebSocketClient):
                 "No supported stream enabled for OKX (need ticker/price/tickers_kline)"
             )
 
-    def _get_websocket_url(self, channel: Channel) -> str:
+    async def _get_websocket_url(self, channel: Channel) -> str:
         """Return the Okx WebSocket URL. Index-tickers uses a fixed public path."""
         # Path is always /ws/v5/public for index-tickers
         return "wss://ws.okx.com:8443/ws/v5/public"

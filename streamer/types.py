@@ -5,7 +5,7 @@ from typing import Any, ClassVar, Literal
 
 Channel = Literal["linear", "spot"]
 DataType = Literal["klines", "ticker", "price", "tickers-klines"]
-ExchangeType = Literal["bybit", "bingx", "bitget", "binance", "okx"]
+ExchangeType = Literal["bybit", "bingx", "bitget", "binance", "okx", "kucoin"]
 
 
 class Interval:

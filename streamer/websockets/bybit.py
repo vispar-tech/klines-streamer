@@ -44,7 +44,7 @@ class BybitWebSocketClient(WebSocketClient):
         ):
             self.ticker_topic = "tickers.{symbol}"
 
-    def _get_websocket_url(self, channel: Channel) -> str:
+    async def _get_websocket_url(self, channel: Channel) -> str:
         """Return the Bybit WebSocket URL."""
         return f"wss://stream.bybit.com/v5/public/{channel}"
 

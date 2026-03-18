@@ -8,7 +8,10 @@ custom consumers for different output destinations.
 import asyncio
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
+
+from streamer.storage import Storage
+from streamer.types import Channel, DataType
 
 # Add parent path to sys.path for local development/example usage
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
@@ -22,13 +25,13 @@ from streamer.consumers.base import BaseConsumer
 class FileConsumer(BaseConsumer):
     """Example consumer that writes kline data to an output path."""
 
-    def __init__(self, output_path: str | None = None) -> None:
+    def __init__(self, storage: Storage, output_path: str | None = None) -> None:
         """
         Initialize file consumer with configurable output path.
 
         If no output_path is provided, defaults to './output/kline_data.jsonl'.
         """
-        super().__init__("file")
+        super().__init__(storage, "file")
 
         # Ensure we always write into './output' directory
         output_dir = Path("./output")
@@ -51,7 +54,9 @@ class FileConsumer(BaseConsumer):
         self.logger.info("Starting file consumer")
         self._is_running = True
 
-    async def consume(self, data: List[Dict[str, Any]]) -> None:
+    async def consume(
+        self, channel: Channel, data_type: DataType, data: list[dict[str, Any]]
+    ) -> None:
         """
         Consume kline data and write to output path.
 

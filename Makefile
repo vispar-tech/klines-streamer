@@ -21,7 +21,7 @@ run-%: ## Run the klines streamer for the given exchange (usage: make run-binanc
 		. .env.$*; \
 		set +o allexport; \
 	fi; \
-	STREAMER_EXCHANGE=$* poetry run python -m streamer
+	STREAMER_REDIS_HOST=localhost STREAMER_EXCHANGE=$* poetry run python -m streamer
 
 run: run-bybit ## Default run (for Bybit)
 

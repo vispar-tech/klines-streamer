@@ -10,6 +10,7 @@ from streamer.websockets.binance import BinanceWebSocketClient
 from streamer.websockets.bingx import BingxWebSocketClient
 from streamer.websockets.bitget import BitgetWebSocketClient
 from streamer.websockets.bybit import BybitWebSocketClient
+from streamer.websockets.kucoin import KucoinWebSocketClient
 from streamer.websockets.okx import OkxWebSocketClient
 
 
@@ -26,14 +27,16 @@ def get_websocket_client(
         "on_ticker": on_ticker,
         "on_symbols_count_changed": on_symbols_count_changed,
     }
-    if settings.exchange == "bingx":
-        return BingxWebSocketClient(**kwargs)
-    if settings.exchange == "bybit":
-        return BybitWebSocketClient(**kwargs)
-    if settings.exchange == "bitget":
-        return BitgetWebSocketClient(**kwargs)
-    if settings.exchange == "okx":
-        return OkxWebSocketClient(**kwargs)
-    if settings.exchange == "binance":
-        return BinanceWebSocketClient(**kwargs)
-    raise ValueError(f"Unsupported exchange: {settings.exchange!r}")
+    match settings.exchange:
+        case "bingx":
+            return BingxWebSocketClient(**kwargs)
+        case "bybit":
+            return BybitWebSocketClient(**kwargs)
+        case "bitget":
+            return BitgetWebSocketClient(**kwargs)
+        case "okx":
+            return OkxWebSocketClient(**kwargs)
+        case "binance":
+            return BinanceWebSocketClient(**kwargs)
+        case "kucoin":
+            return KucoinWebSocketClient(**kwargs)

@@ -41,10 +41,9 @@ class WebSocketClient(ABC):
         self.on_ticker = on_ticker
         self._on_symbols_count_changed = on_symbols_count_changed
 
-        self.url = self._get_websocket_url(channel)
         self.pool_size = settings.exchange_socket_pool_size
 
-        self.channel = channel  # store channel for logs
+        self.channel: Channel = channel  # store channel for logs
 
         # Pool management
         self._running = False
@@ -54,7 +53,7 @@ class WebSocketClient(ABC):
         self._symbols_refresh_task: asyncio.Task[None] | None = None
 
     @abstractmethod
-    def _get_websocket_url(self, channel: Channel) -> str:
+    async def _get_websocket_url(self, channel: Channel) -> str:
         """Return the WebSocket URL for the specific exchange."""
         ...
 
@@ -259,11 +258,12 @@ class WebSocketClient(ABC):
         """Run a single WebSocket connection."""
         while self._running:
             try:
+                url = await self._get_websocket_url(self.channel)
                 logger.info(
-                    f"Connecting to {self.url} on channel {self.channel} "
+                    f"Connecting to {url} on channel {self.channel} "
                     f"(socket {socket_id})"
                 )
-                async with websockets.connect(self.url) as websocket:
+                async with websockets.connect(url) as websocket:
                     self._sockets[socket_id] = websocket
                     logger.info(
                         f"Connected on channel {self.channel} (socket {socket_id})"
