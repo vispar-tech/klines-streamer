@@ -18,6 +18,8 @@ from streamer.websockets.base import WebSocketClient
 
 logger = logging.getLogger(__name__)
 
+KUCOIN_MAX_SUBSCRIPTION_BATCH_SIZE = 100  # Kucoin's documented max per subscribe
+
 
 class KucoinWebSocketClient(WebSocketClient):
     """
@@ -83,23 +85,37 @@ class KucoinWebSocketClient(WebSocketClient):
         self._connect_id = self._generate_connect_id()
         return f"{ws_base}?token={token}&connectId={self._connect_id}"
 
+    @staticmethod
+    def _chunked(iterable: set[str], size: int) -> list[list[str]]:
+        """Split a set of strings into batches/lists of the given size."""
+        items = list(iterable)
+        return [items[i : i + size] for i in range(0, len(items), size)]
+
     async def _subscribe(self, websocket: ClientConnection, symbols: set[str]) -> None:
         """Subscribe to /contractMarket/ticker:{symbol} for each contract symbol."""
-        topic_symbols = ",".join(symbols)
-        topic = f"/contractMarket/ticker:{topic_symbols}"
-        msg_id = str(int(time.time() * 1000))
-        subscription_msg = {
-            "id": msg_id,
-            "type": "subscribe",
-            "topic": topic,
-            "privateChannel": False,
-            "response": True,
-        }
-        await websocket.send(orjson.dumps(subscription_msg).decode("utf-8"))
-        logger.info(
-            f"Subscribed to Kucoin /contractMarket/ticker (V1) for: "
-            f"{list(symbols)} on channel {self.channel}"
-        )
+        if not symbols:
+            return
+        symbol_batches = self._chunked(symbols, KUCOIN_MAX_SUBSCRIPTION_BATCH_SIZE)
+        for batch_num, batch in enumerate(symbol_batches, start=1):
+            topic_symbols = ",".join(batch)
+            topic = f"/contractMarket/ticker:{topic_symbols}"
+            msg_id = str(int(time.time() * 1000))
+            subscription_msg = {
+                "id": msg_id,
+                "type": "subscribe",
+                "topic": topic,
+                "privateChannel": False,
+                "response": True,
+            }
+            await websocket.send(orjson.dumps(subscription_msg).decode("utf-8"))
+            logger.info(
+                f"Subscribed to Kucoin /contractMarket/ticker (V1) for "
+                f"batch {batch_num}/{len(symbol_batches)}: "
+                f"{batch} on channel {self.channel}"
+            )
+            # Kucoin recommends not sending multiple subscription requests too rapidly
+            if batch_num != len(symbol_batches):
+                await asyncio.sleep(0.1)  # small delay between batches
 
     async def _ping_loop(self, socket_id: int, websocket: ClientConnection) -> None:
         """Send ping messages at the required interval."""
