@@ -103,6 +103,7 @@ services:
       - streamer-bitget
       - streamer-binance
       - streamer-okx
+      - streamer-kucoin
 
 networks:
   shared:
