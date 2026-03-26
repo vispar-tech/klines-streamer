@@ -91,10 +91,13 @@ services:
     container_name: streamer-proxy
     networks:
       - shared
+    expose:
+      - ${PROXY_WEBSOCKET_PORT}
     volumes:
       - ./logs:/usr/src/logs
-    ports:
-      - "8080:8080"
+    environment:
+      - PROXY_WSS_AUTH_KEY=${STREAMER_WSS_AUTH_KEY}
+      - PROXY_WSS_AUTH_USER=${STREAMER_WSS_AUTH_USER}
     env_file:
       - .env
     depends_on:
