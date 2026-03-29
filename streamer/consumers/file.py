@@ -1,6 +1,7 @@
 """Save streaming data to organized file structure with automatic cleanup."""
 
 import asyncio
+import gzip
 import json
 from contextlib import suppress
 from datetime import datetime, timedelta
@@ -61,7 +62,7 @@ class FileConsumer(BaseConsumer):
         data_type: DataType,
         data: list[dict[str, Any]],
     ) -> None:
-        """Save streaming data to file, if data_type is allowed."""
+        """Save streaming data to file (compressed), if data_type is allowed."""
         if not self._is_running or not data:
             return
 
@@ -84,21 +85,20 @@ class FileConsumer(BaseConsumer):
             )
             data_dir.mkdir(parents=True, exist_ok=True)
 
-            # Create filename with timestamp: YYYYMMDD_HHMMSS_mmmmmm.jsonl
+            # Create filename with timestamp: YYYYMMDD_HHMMSS_mmmmmm.jsonl.gz
             timestamp_str = now.strftime("%Y%m%d_%H%M%S_%f")
-            filename = f"{timestamp_str}_{channel}_{data_type}.jsonl"
+            filename = f"{timestamp_str}_{channel}_{data_type}.jsonl.gz"
             file_path = data_dir / filename
 
-            # Write all data as a single JSON object
-            # with channel and data_type as metadata
-            with file_path.open("w", encoding="utf-8") as f:
-                block = {
-                    "exchange": settings.exchange,
-                    "channel": channel,
-                    "data_type": data_type,
-                    "timestamp": now.isoformat(),
-                    "data": data,
-                }
+            # Write all data as a single JSON object, compressed with gzip
+            block = {
+                "exchange": settings.exchange,
+                "channel": channel,
+                "data_type": data_type,
+                "timestamp": now.isoformat(),
+                "data": data,
+            }
+            with gzip.open(file_path, "wt", encoding="utf-8") as f:
                 f.write(json.dumps(block, ensure_ascii=False) + "\n")
 
             if data_type not in {"ticker", "price"}:
