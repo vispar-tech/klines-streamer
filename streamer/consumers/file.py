@@ -36,6 +36,7 @@ class FileConsumer(BaseConsumer):
         self._cleanup_interval = cleanup_interval
         self._cleanup_task: asyncio.Task[None] | None = None
         self._retention_hours = settings.file_consumer_retention_hours
+        self._allowed_types = settings.file_consumer_types
 
     def validate(self) -> None:
         """Validate file consumer settings."""
@@ -63,17 +64,22 @@ class FileConsumer(BaseConsumer):
         data_type: DataType,
         data: list[dict[str, Any]],
     ) -> None:
-        """Save streaming data to file."""
+        """Save streaming data to file, if data_type is allowed."""
         if not self._is_running or not data:
+            return
+
+        # Only allow saving data matching allowed types from settings
+        if data_type not in self._allowed_types:
             return
 
         try:
             # Get current timestamp
             now = datetime.now()
 
-            # Create directory structure: base_path/year/month/day/hour/
+            # Create directory structure: base_path/data_type/year/month/day/hour/
             data_dir = (
                 self._base_path
+                / str(data_type)
                 / f"{now.year:04d}"
                 / f"{now.month:02d}"
                 / f"{now.day:02d}"
@@ -120,9 +126,10 @@ class FileConsumer(BaseConsumer):
     def _is_old_hour_dir(self, hour_dir: Path, cutoff_time: datetime) -> bool:
         """Determine if an hour_dir is older than cutoff_time."""
         try:
-            dir_year = int(hour_dir.parent.parent.parent.name)
-            dir_month = int(hour_dir.parent.parent.name)
-            dir_day = int(hour_dir.parent.name)
+            # hour_dir should be .../data_type/YYYY/MM/DD/HH
+            dir_year = int(hour_dir.parent.parent.parent.parent.name)
+            dir_month = int(hour_dir.parent.parent.parent.name)
+            dir_day = int(hour_dir.parent.parent.name)
             dir_hour = int(hour_dir.name)
             dir_datetime = datetime(dir_year, dir_month, dir_day, dir_hour)
             return dir_datetime < cutoff_time
@@ -151,22 +158,25 @@ class FileConsumer(BaseConsumer):
         hour_dirs: list[Path] = []
         if not self._base_path.exists():
             return hour_dirs
-        for year_dir in self._base_path.iterdir():
-            if not year_dir.is_dir():
+        for data_type_dir in self._base_path.iterdir():
+            if not data_type_dir.is_dir():
                 continue
-
-            for month_dir in year_dir.iterdir():
-                if not month_dir.is_dir():
+            for year_dir in data_type_dir.iterdir():
+                if not year_dir.is_dir():
                     continue
 
-                for day_dir in month_dir.iterdir():
-                    if not day_dir.is_dir():
+                for month_dir in year_dir.iterdir():
+                    if not month_dir.is_dir():
                         continue
 
-                    for hour_dir in day_dir.iterdir():
-                        if not hour_dir.is_dir():
+                    for day_dir in month_dir.iterdir():
+                        if not day_dir.is_dir():
                             continue
-                        hour_dirs.append(hour_dir)
+
+                        for hour_dir in day_dir.iterdir():
+                            if not hour_dir.is_dir():
+                                continue
+                            hour_dirs.append(hour_dir)
         return hour_dirs
 
     async def _cleanup_old_files(self) -> None:

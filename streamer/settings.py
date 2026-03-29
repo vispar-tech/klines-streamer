@@ -1,12 +1,12 @@
 """Application settings using Pydantic."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from yarl import URL
 
-from streamer.types import ExchangeType, Interval
+from streamer.types import DataType, ExchangeType, Interval
 
 
 class Settings(BaseSettings):
@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     # File consumer settings
     file_consumer_base_path: str = "output/file_consumer"
     file_consumer_retention_hours: int = 4
+    file_consumer_types: Annotated[set[DataType], NoDecode] = {
+        "klines",
+        "ticker",
+        "price",
+        "tickers-klines",
+    }
 
     @field_validator("exchange_symbols", mode="before")
     @classmethod
@@ -103,6 +109,21 @@ class Settings(BaseSettings):
                 if isinstance(v, str):
                     items.extend([s.strip() for s in v.split(",") if s.strip()])
         return {x for x in items if x}
+
+    @field_validator("file_consumer_types", mode="before")
+    @classmethod
+    def validate_file_consumer_types(cls, value: Any) -> set[DataType]:
+        """Parse string or list to a set of DataType for file consumer."""
+        items: list[str] = []
+        if isinstance(value, str):
+            items.extend([v.strip() for v in value.split(",") if v.strip()])
+        elif isinstance(value, list):
+            for v in value:
+                if isinstance(v, str):
+                    items.extend([s.strip() for s in v.split(",") if s.strip()])
+        # Only return valid DataType values
+        valid_types = {"klines", "ticker", "price", "tickers-klines"}
+        return cast("set[DataType]", {x for x in items if x in valid_types})
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":

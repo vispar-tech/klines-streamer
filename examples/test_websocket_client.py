@@ -52,7 +52,7 @@ async def main() -> None:
     Test client for the websocket consumer running on localhost.
 
     Connects to the websocket server, sends authentication message using settings,
-    and prints all incoming messages. If a binary message is received, attempt gzip decompression,
+    and prints all incoming messages,
     then decode and parse as JSON, and print.
     """
     uri = get_ws_uri()
@@ -93,7 +93,6 @@ async def main() -> None:
                             preview = msg[:100]
                             logger.info(f"< [binary preview]: {preview}...")
                     else:
-                        # msg is str (text)
                         try:
                             data = orjson.loads(msg)
                             logger.info(f"< Received:\n{data}")
