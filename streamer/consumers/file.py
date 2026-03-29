@@ -20,7 +20,6 @@ class FileConsumer(BaseConsumer):
         self,
         storage: Storage,
         name: str = "file",
-        base_path: str = "output/file_consumer",
         cleanup_interval: int = 300,  # 5 minutes
     ) -> None:
         """Initialize FileConsumer.
@@ -28,11 +27,10 @@ class FileConsumer(BaseConsumer):
         Args:
             storage: Storage instance
             name: Consumer name
-            base_path: Base directory for saving files
             cleanup_interval: Interval in seconds to run cleanup task
         """
         super().__init__(storage, name)
-        self._base_path = Path(base_path)
+        self._base_path = Path(settings.file_consumer_base_path)
         self._cleanup_interval = cleanup_interval
         self._cleanup_task: asyncio.Task[None] | None = None
         self._retention_hours = settings.file_consumer_retention_hours
@@ -47,7 +45,6 @@ class FileConsumer(BaseConsumer):
             "Setting up file consumer with base path: %s",
             self._base_path,
         )
-        # Create base directory if it doesn't exist
         self._base_path.mkdir(parents=True, exist_ok=True)
 
     async def start(self) -> None:
@@ -104,11 +101,12 @@ class FileConsumer(BaseConsumer):
                 }
                 f.write(json.dumps(block, ensure_ascii=False) + "\n")
 
-            self.logger.debug(
-                "Saved %d items to %s",
-                len(data),
-                file_path.relative_to(self._base_path),
-            )
+            if data_type not in {"ticker", "price"}:
+                self.logger.info(
+                    "Saved %d items to %s",
+                    len(data),
+                    file_path.relative_to(self._base_path),
+                )
 
         except Exception as e:
             self.logger.error("Error saving data to file: %s", e)

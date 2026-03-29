@@ -14,11 +14,12 @@ RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY ./streamer ./streamer
 
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Change ownership of the working directory (logs will be mounted from host)
 RUN chown -R streamer:streamer /usr/src
 RUN mkdir -p /usr/src/logs && chown -R streamer:streamer /usr/src/logs
 
-# Switch to non-root user
-USER streamer
-
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["python", "-m", "streamer"]

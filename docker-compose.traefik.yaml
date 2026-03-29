@@ -15,6 +15,7 @@ x-streamer-base: &streamer-base
     - shared
   volumes:
     - ./logs:/usr/src/logs
+    - ./output:/usr/src/output
   env_file:
     - .env
 
@@ -101,6 +102,7 @@ services:
       - shared
     volumes:
       - ./logs:/usr/src/logs
+      - ./output:/usr/src/output
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefiktointernet
