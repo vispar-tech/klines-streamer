@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     log_file: str = ""
 
+    # File consumer settings
+    file_consumer_base_path: str = "output/file_consumer"
+    file_consumer_retention_hours: int = 4
+
     @field_validator("exchange_symbols", mode="before")
     @classmethod
     def validate_exchange_symbols(cls, value: Any) -> set[str]:

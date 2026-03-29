@@ -35,6 +35,7 @@ class FileConsumer(BaseConsumer):
         self._base_path = Path(base_path)
         self._cleanup_interval = cleanup_interval
         self._cleanup_task: asyncio.Task[None] | None = None
+        self._retention_hours = settings.file_consumer_retention_hours
 
     def validate(self) -> None:
         """Validate file consumer settings."""
@@ -169,11 +170,11 @@ class FileConsumer(BaseConsumer):
         return hour_dirs
 
     async def _cleanup_old_files(self) -> None:
-        """Remove files older than 4 hours."""
+        """Remove files older than configured retention hours."""
         if not self._base_path.exists():
             return
 
-        cutoff_time = datetime.now() - timedelta(hours=4)
+        cutoff_time = datetime.now() - timedelta(hours=self._retention_hours)
         removed_files = 0
         removed_dirs = 0
 
