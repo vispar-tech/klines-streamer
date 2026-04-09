@@ -10,6 +10,7 @@ x-streamer-base: &streamer-base
   build:
     context: .
     dockerfile: Dockerfile
+  restart: always
   networks:
     - traefiktointernet
     - shared
@@ -97,6 +98,7 @@ services:
       context: .
       dockerfile: proxy.Dockerfile
     container_name: streamer-proxy
+    restart: always
     networks:
       - traefiktointernet
       - shared
