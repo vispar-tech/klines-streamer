@@ -353,7 +353,51 @@ class KucoinSymbolLoader(BaseSymbolLoader):
             return set()
 
 
-def get_symbol_loader() -> BaseSymbolLoader:
+class GateSymbolLoader(BaseSymbolLoader):
+    """Symbol loader for Gate exchange (all contracts, USDT quote currency)."""
+
+    def __init__(self) -> None:
+        """Initialize Gate symbol loader."""
+        super().__init__("Gate")
+        self.contracts_url = "https://api.gateio.ws/api/v4/futures/usdt/contracts"
+
+    async def load_all_symbols(self, limit: int | None = None) -> set[str]:
+        """
+        Load all trading symbols from Gate API.
+
+        Only symbols with quoteCurrency == 'USDT' and status == 'Open' are included.
+        """
+        try:
+            timeout = ClientTimeout(total=20)
+            async with (
+                aiohttp.ClientSession(timeout=timeout) as session,
+                session.get(self.contracts_url) as response,
+            ):
+                response.raise_for_status()
+                contracts: list[dict[str, Any]] = orjson.loads(await response.read())
+
+            # Only status: Open and quoteCurrency == 'USDT'
+            symbols = [
+                str(item["name"])
+                for item in contracts
+                if (
+                    not item.get("in_delisting", False)
+                    and item.get("status") == "trading"
+                )
+            ]
+            symbols = [s for s in symbols if s]
+
+            if limit is not None:
+                symbols = symbols[:limit]
+
+            logger.info(f"Loaded {len(symbols)} symbols from Gate API")
+            return set(symbols)
+        except Exception as exc:
+            logger.warning(f"Failed to load symbols from Gate API: {exc}")
+            return set()
+
+
+def get_symbol_loader() -> BaseSymbolLoader:  # noqa: PLR0911
     """Return the appropriate symbol loader based on exchange setting."""
     match settings.exchange:
         case "bingx":
@@ -368,6 +412,8 @@ def get_symbol_loader() -> BaseSymbolLoader:
             return BinanceSymbolLoader()
         case "kucoin":
             return KucoinSymbolLoader()
+        case "gate":
+            return GateSymbolLoader()
 
 
 # Singleton instance based on current settings

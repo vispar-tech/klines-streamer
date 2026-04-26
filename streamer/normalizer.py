@@ -27,7 +27,7 @@ BINGX_FIELDS_MAP = {
 }
 
 BITGET_FIELDS_MAP = {
-    "lastPr": "lastPr",
+    "lastPr": "currentPrice",
     "symbol": "symbol",
     "indexPrice": "indexPrice",
     "open24h": "openPrice24h",
@@ -42,7 +42,7 @@ BITGET_FIELDS_MAP = {
     "openUtc": "openPriceUTC",
     "instId": "symbol",  # This sometimes mirrors 'symbol'
     "bidSz": "bid1Size",
-    "markPrice": "currentPrice",
+    "markPrice": "markPrice",
     "high24h": "highPrice24h",
     "askPr": "ask1Price",
     "holdingAmount": "openInterest",
@@ -95,6 +95,28 @@ KUCOIN_TICKER_FIELDS_MAP = {
     "tradeId": "tradeId",
     "sequence": "sequence",
     "ts": "eventTime",
+}
+
+GATE_TICKER_FIELDS_MAP = {
+    "contract": "symbol",
+    "last": "currentPrice",
+    "change_percentage": "price24hPcnt",
+    "total_size": "totalSize",
+    "volume_24h": "volume24h",
+    "volume_24h_base": "volume24hBase",
+    "volume_24h_quote": "volume24hQuote",
+    "volume_24h_settle": "volume24hSettle",
+    "mark_price": "markPrice",
+    "funding_rate": "fundingRate",
+    "funding_rate_indicative": "fundingRateIndicative",
+    "index_price": "indexPrice",
+    "quanto_base_rate": "quantoBaseRate",
+    "low_24h": "lowPrice24h",
+    "high_24h": "highPrice24h",
+    "price_type": "priceType",
+    "change_from": "changeFrom",
+    "change_price": "priceChange24h",
+    "t": "eventTime",
 }
 
 
@@ -168,9 +190,7 @@ class BybitNormalizer(BaseNormalizer):
         self, ticker_data: dict[str, Any], channel: Channel
     ) -> dict[str, Any] | None:
         """Normalize Bybit ticker data."""
-        if channel == "linear" and "markPrice" in ticker_data["data"]:
-            ticker_data["data"]["currentPrice"] = ticker_data["data"].pop("markPrice")
-        elif channel == "spot" and "lastPrice" in ticker_data["data"]:
+        if "lastPrice" in ticker_data["data"]:
             ticker_data["data"]["currentPrice"] = ticker_data["data"].pop("lastPrice")
 
         return ticker_data
@@ -290,13 +310,13 @@ class BinanceNormalizer(BaseNormalizer):
 
 
 class KucoinNormalizer(BaseNormalizer):
-    """Normalizer for Kucoin contractMarket/ticker v1 (deprecated, V2 preferred)."""
+    """Normalizer for Kucoin contractMarket/ticker."""
 
     def handle_trade(
         self, trade_data: dict[str, Any], channel: Channel
     ) -> list[dict[str, Any]] | None:
-        """No trade normalization for Kucoin v1 ticker; return None."""
-        # No trades in ticker stream
+        """No trade normalization for Kucoin; return None."""
+        # todo
         return None
 
     def handle_ticker(
@@ -347,7 +367,72 @@ class KucoinNormalizer(BaseNormalizer):
         }
 
 
-def get_normalizer() -> BaseNormalizer:
+class GateNormalizer(BaseNormalizer):
+    """Normalizer for Gate ticker."""
+
+    def handle_trade(
+        self, trade_data: dict[str, Any], channel: Channel
+    ) -> list[dict[str, Any]] | None:
+        """No trade normalization for Gate; return None."""
+        # todo
+        return None
+
+    def handle_ticker(
+        self, ticker_data: dict[str, Any], channel: Channel
+    ) -> dict[str, Any] | None:
+        """
+        Normalize gate /contractMarket/ticker:{symbol} data.
+
+        Example incoming:
+        {
+            "time": 1777189945,
+            "time_ms": 1777189945489,
+            "channel": "futures.tickers",
+            "event": "update",
+            "result": [{
+            "contract": "SOL_USDT",
+            "last": "86.53",
+            "change_percentage": "0.1505",
+            "total_size": "3978380.2",
+            "volume_24h": "3152563",
+            "volume_24h_base": "3152563",
+            "volume_24h_quote": "272791276",
+            "volume_24h_settle": "272791276",
+            "mark_price": "86.53",
+            "funding_rate": "-0.000008",
+            "funding_rate_indicative": "-0.000008",
+            "index_price": "86.57",
+            "quanto_base_rate": "",
+            "low_24h": "85.50",
+            "high_24h": "86.76",
+            "price_type": "last",
+            "change_from": "24h",
+            "change_price": "0.13",
+            "t": 1777189945439
+            }]
+        }
+        """
+        # Get the data field
+        normalized_data: dict[str, Any] = {}
+
+        for k, v in ticker_data.items():
+            if k in GATE_TICKER_FIELDS_MAP:
+                normalized_data[GATE_TICKER_FIELDS_MAP[k]] = v
+            else:
+                normalized_data[k] = v  # fallback
+
+        symbol = ticker_data["contract"]
+        topic = f"tickers.{symbol}" if symbol else "tickers"
+        ts = ticker_data["t"]
+        return {
+            "topic": topic,
+            "type": "snapshot",
+            "data": normalized_data,
+            "ts": ts,
+        }
+
+
+def get_normalizer() -> BaseNormalizer:  # noqa: PLR0911
     """Return the appropriate normalizer based on exchange setting."""
     match settings.exchange:
         case "bingx":
@@ -362,6 +447,8 @@ def get_normalizer() -> BaseNormalizer:
             return BinanceNormalizer()
         case "kucoin":
             return KucoinNormalizer()
+        case "gate":
+            return GateNormalizer()
 
 
 # Singleton instance based on current settings

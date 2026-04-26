@@ -93,6 +93,18 @@ services:
     environment:
       - STREAMER_EXCHANGE=kucoin
 
+  streamer-gate:
+    <<: *streamer-base
+    container_name: streamer-gate
+    volumes:
+      - ./logs:/usr/src/logs
+      - ./output/gate:/usr/src/output
+    env_file:
+      - .env
+      - .env.gate
+    environment:
+      - STREAMER_EXCHANGE=gate
+
   streamer-proxy:
     build:
       context: .
@@ -125,3 +137,4 @@ services:
       - streamer-binance
       - streamer-okx
       - streamer-kucoin
+      - streamer-gate

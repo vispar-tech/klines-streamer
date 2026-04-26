@@ -10,11 +10,12 @@ from streamer.websockets.binance import BinanceWebSocketClient
 from streamer.websockets.bingx import BingxWebSocketClient
 from streamer.websockets.bitget import BitgetWebSocketClient
 from streamer.websockets.bybit import BybitWebSocketClient
+from streamer.websockets.gate import GateWebSocketClient
 from streamer.websockets.kucoin import KucoinWebSocketClient
 from streamer.websockets.okx import OkxWebSocketClient
 
 
-def get_websocket_client(
+def get_websocket_client(  # noqa: PLR0911
     channel: Channel,
     on_trade: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
     on_ticker: Callable[[dict[str, Any]], Coroutine[Any, Any, None]],
@@ -40,3 +41,5 @@ def get_websocket_client(
             return BinanceWebSocketClient(**kwargs)
         case "kucoin":
             return KucoinWebSocketClient(**kwargs)
+        case "gate":
+            return GateWebSocketClient(**kwargs)
