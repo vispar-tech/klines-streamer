@@ -1,6 +1,7 @@
 version: "3"
 
 x-streamer-base: &streamer-base
+  image: streamer-unified:latest
   build:
     context: .
     dockerfile: Dockerfile
