@@ -45,9 +45,8 @@ class BinanceWebSocketClient(WebSocketClient):
             )
 
     async def _get_websocket_url(self, channel: Channel) -> str:
-        """Return the Binance WebSocket URL. Index-tickers uses a fixed public path."""
-        # Path is always /ws/v5/public for index-tickers
-        return "wss://fstream.binance.com/ws"
+        """Return the Binance WebSocket URL."""
+        return "wss://fstream.binance.com/market/ws"
 
     async def _subscribe(self, websocket: ClientConnection, symbols: set[str]) -> None:
         """Subscribe to ticker streams for assigned symbols in BINANCE format."""
