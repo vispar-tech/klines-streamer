@@ -208,3 +208,8 @@ class BitgetWebSocketClient(WebSocketClient):
                 f"Failed to parse message on channel {self.channel}: {e}, "
                 f"message: {message!s}"
             )
+        except KeyError as e:
+            logger.error(
+                f"KeyError while processing message on channel {self.channel}: {e}, "
+                f"message: {message!s}"
+            )
