@@ -91,6 +91,7 @@ STREAMER_REDIS_MAIN_KEY=market-data
 STREAMER_WEBSOCKET_HOST=0.0.0.0
 STREAMER_WEBSOCKET_PORT=9500
 STREAMER_WEBSOCKET_PATH=/
+STREAMER_WS_COMPRESSION=gzip  # gzip or zstd (zstd: smaller + faster, needs client auto-detect)
 
 STREAMER_WSS_AUTH_KEY=your_secret_key
 STREAMER_WSS_AUTH_USER=admin

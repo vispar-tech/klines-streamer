@@ -1,6 +1,6 @@
 """Application settings using Pydantic."""
 
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     websocket_host: str | None = None
     websocket_port: int | None = None
     websocket_path: str = "/"
+    ws_compression: Literal["gzip", "zstd"] = "gzip"
 
     # WebSocket authentication
     # (optional - only required when WebSocket consumer is enabled)

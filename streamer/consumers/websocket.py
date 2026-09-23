@@ -1,23 +1,18 @@
-"""Implement WebSocket consumer for streaming kline data (gzip compressed)."""
+"""Implement WebSocket consumer for streaming kline data (configurable compression)."""
 
 import asyncio
 import contextlib
-import gzip
 from typing import Any
 
 import orjson
 from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
+from streamer.compression import compress
 from streamer.consumers.base import BaseConsumer
 from streamer.settings import settings
 from streamer.storage import Storage
 from streamer.types import Channel, DataType
-
-
-def gzip_compress(data: bytes) -> bytes:
-    """Compress bytes data using gzip and return bytes."""
-    return gzip.compress(data, compresslevel=5)
 
 
 class WebSocketConnectionManager:
@@ -57,7 +52,7 @@ class WebSocketConnectionManager:
 
 
 class WebSocketConsumer(BaseConsumer):
-    """Stream gzip-compressed kline data to connected WebSocket clients."""
+    """Stream compressed kline data (configurable codec) to WebSocket clients."""
 
     def __init__(self, storage: Storage, name: str = "websocket") -> None:
         """Initialize with storage and resource manager."""
@@ -100,10 +95,10 @@ class WebSocketConsumer(BaseConsumer):
             self.logger.error(f"Failed to send json to client: {e}")
 
     async def send_gzip_json(self, ws: ServerConnection, data: dict[str, Any]) -> None:
-        """Send JSON as gzipped binary data to the websocket."""
+        """Send JSON as compressed binary data to the websocket."""
         try:
             payload = orjson.dumps(data)
-            compressed = gzip_compress(payload)
+            compressed = compress(payload, settings.ws_compression)
             await ws.send(compressed)
         except Exception as e:
             self.logger.error(f"Failed to send gzip json to client: {e}")
@@ -236,7 +231,7 @@ class WebSocketConsumer(BaseConsumer):
     async def consume(
         self, channel: Channel, data_type: DataType, data: list[dict[str, Any]]
     ) -> None:
-        """Broadcast kline data to WebSocket clients using gzip compression."""
+        """Broadcast kline data to WebSocket clients using configurable compression."""
         if not self._is_running:
             return
 
@@ -249,7 +244,7 @@ class WebSocketConsumer(BaseConsumer):
                     "data": data,
                 }
             )
-            compressed_message = gzip_compress(payload)
+            compressed_message = compress(payload, settings.ws_compression)
             await self.connection_manager.broadcast(compressed_message)
 
             c = self.connection_manager.count()

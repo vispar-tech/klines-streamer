@@ -1,6 +1,6 @@
 """Proxy application settings."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -13,6 +13,7 @@ class ProxySettings(BaseSettings):
     websocket_host: str = "localhost"
     websocket_port: int = 8080
     websocket_path: str = "/"
+    ws_compression: Literal["gzip", "zstd"] = "gzip"
 
     # Upstream WebSocket connections
     upstream_connections: Annotated[list[str], NoDecode] = [

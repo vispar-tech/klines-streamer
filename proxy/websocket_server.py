@@ -2,7 +2,6 @@
 
 import asyncio
 import contextlib
-import gzip
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
@@ -11,14 +10,10 @@ from typing import Any
 import orjson
 from websockets.asyncio.server import Server, ServerConnection, serve
 
+from proxy.compression import compress
 from proxy.settings import settings
 
 logger = logging.getLogger(__name__)
-
-
-def gzip_compress(data: bytes) -> bytes:
-    """Compress bytes data using gzip and return bytes."""
-    return gzip.compress(data, compresslevel=5)
 
 
 class WebSocketServer:
@@ -106,10 +101,10 @@ class WebSocketServer:
         self.connections.clear()
 
     async def send_gzip_json(self, ws: ServerConnection, data: dict[str, Any]) -> None:
-        """Send JSON as gzipped binary data to the websocket."""
+        """Send JSON as compressed binary data to the websocket."""
         try:
             payload = orjson.dumps(data)
-            compressed = gzip_compress(payload)
+            compressed = compress(payload)
             await ws.send(compressed)
         except Exception as e:
             logger.error(f"Failed to send gzip json to client: {e}")
@@ -133,7 +128,7 @@ class WebSocketServer:
         else:
             # If message is dict, compress it
             payload = orjson.dumps(message)
-            compressed_message = gzip_compress(payload)
+            compressed_message = compress(payload)
 
         websockets = set(self.connections)
         to_remove: set[ServerConnection] = set()

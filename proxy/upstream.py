@@ -1,7 +1,6 @@
 """Upstream WebSocket connections manager."""
 
 import asyncio
-import gzip
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -12,12 +11,6 @@ if TYPE_CHECKING:
     from proxy.message_router import MessageRouter
 
 from proxy.settings import settings
-
-
-def gzip_compress(data: bytes) -> bytes:
-    """Compress bytes data using gzip."""
-    return gzip.compress(data, compresslevel=5)
-
 
 logger = logging.getLogger(__name__)
 

@@ -2,13 +2,14 @@
 """Example WebSocket client for the proxy server."""
 
 import asyncio
-import gzip
 import os
 import ssl
 from datetime import datetime
 
 import orjson
 from websockets.asyncio.client import connect
+
+from streamer.compression import decompress
 
 
 def log(msg: str) -> None:
@@ -68,7 +69,7 @@ async def main() -> None:
                             )
                         continue
 
-                    decompressed = gzip.decompress(message)
+                    decompressed = decompress(message)
                     data = orjson.loads(decompressed)
 
                     exchange = data.get("exchange", "unknown")

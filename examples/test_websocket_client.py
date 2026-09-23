@@ -1,13 +1,13 @@
 """Test websocket client."""
 
 import asyncio
-import gzip
 import logging
 import ssl
 
 import orjson
 import websockets
 
+from streamer.compression import decompress
 from streamer.settings import settings
 
 # Set up logging
@@ -82,12 +82,12 @@ async def main() -> None:
                     # If msg is bytes, try to decompress and decode as JSON
                     if isinstance(msg, bytes):
                         try:
-                            decompressed = gzip.decompress(msg)
+                            decompressed = decompress(msg)
                             data = orjson.loads(decompressed)
-                            logger.info(f"< [gzip-binary] Received:\n{data}")
+                            logger.info(f"< [compressed-binary] Received:\n{data}")
                         except Exception as e:
                             logger.error(
-                                f"< [binary payload] Failed to gunzip/decode: {e}"
+                                f"< [binary payload] Failed to decompress/decode: {e}"
                             )
                             # Print a summary only
                             preview = msg[:100]

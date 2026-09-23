@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Self
 
 from streamer.storage import Storage
 from streamer.types import Channel, DataType
@@ -45,7 +45,7 @@ class BaseConsumer(ABC):
         """Return running state."""
         return self._is_running
 
-    async def __aenter__(self) -> "BaseConsumer":
+    async def __aenter__(self) -> Self:
         """Enter async context."""
         await self.setup()
         await self.start()
