@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     websocket_path: str = "/"
     ws_compression: Literal["gzip", "zstd"] = "gzip"
 
+    # Aggregator ticker/price batching
+    aggregator_batch_enabled: bool = True
+    aggregator_batch_interval_ms: int = 250
+    aggregator_batch_max_size: int = 100
+    aggregator_batch_types: Annotated[set[str], NoDecode] = {"ticker", "price"}
+
     # WebSocket authentication
     # (optional - only required when WebSocket consumer is enabled)
     wss_auth_key: str | None = None
@@ -110,6 +116,27 @@ class Settings(BaseSettings):
                 if isinstance(v, str):
                     items.extend([s.strip() for s in v.split(",") if s.strip()])
         return {x for x in items if x}
+
+    @field_validator("aggregator_batch_types", mode="before")
+    @classmethod
+    def validate_aggregator_batch_types(cls, value: Any) -> set[str]:
+        """Parse string or list to a normalized set of batchable data types."""
+        items: list[str] = []
+        if isinstance(value, str):
+            items.extend([v.strip() for v in value.split(",") if v.strip()])
+        elif isinstance(value, list):
+            for v in value:
+                if isinstance(v, str):
+                    items.extend([s.strip() for s in v.split(",") if s.strip()])
+        return {x for x in items if x}
+
+    @field_validator("aggregator_batch_interval_ms", mode="after")
+    @classmethod
+    def validate_aggregator_batch_interval_ms(cls, value: int) -> int:
+        """Ensure batch interval is strictly positive."""
+        if value <= 0:
+            raise ValueError("aggregator_batch_interval_ms must be > 0")
+        return value
 
     @field_validator("file_consumer_types", mode="before")
     @classmethod

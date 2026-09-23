@@ -93,6 +93,11 @@ STREAMER_WEBSOCKET_PORT=9500
 STREAMER_WEBSOCKET_PATH=/
 STREAMER_WS_COMPRESSION=gzip  # gzip or zstd (zstd: smaller + faster, needs client auto-detect)
 
+STREAMER_AGGREGATOR_BATCH_ENABLED=true  # master switch for ticker/price batching
+STREAMER_AGGREGATOR_BATCH_INTERVAL_MS=250  # batch ticker/price every N ms
+STREAMER_AGGREGATOR_BATCH_MAX_SIZE=100     # early flush when batch reaches N items
+STREAMER_AGGREGATOR_BATCH_TYPES=ticker,price  # which data types to batch
+
 STREAMER_WSS_AUTH_KEY=your_secret_key
 STREAMER_WSS_AUTH_USER=admin
 

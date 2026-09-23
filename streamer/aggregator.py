@@ -10,7 +10,7 @@ from streamer.broadcaster import Broadcaster
 from streamer.normalizer import normalizer
 from streamer.settings import settings
 from streamer.storage import Storage
-from streamer.types import Channel, Interval
+from streamer.types import Channel, DataType, Interval
 from streamer.utils.parse import parse_numbers
 
 logger = logging.getLogger(__name__)
@@ -23,8 +23,10 @@ class Aggregator:
     """OHLC aggregator with interval synchronization for trades and tickers."""
 
     __slots__ = (
+        "_batch_buffer",
         "_broadcaster",
         "_channel",
+        "_flush_task",
         "_interval_ms_map",
         "_intervals_sorted",
         "_min_interval_ms",
@@ -91,6 +93,10 @@ class Aggregator:
         # Initialize timer state
         self._timer_task: asyncio.Task[None] | None = None
         self._timer_ticks_count = 0
+
+        # Initialize ticker/price batch state
+        self._batch_buffer: dict[DataType, list[dict[str, Any]]] = {}
+        self._flush_task: asyncio.Task[None] | None = None
 
         # Log initialization info
         self._log_initialization_info(intervals)
@@ -228,7 +234,6 @@ class Aggregator:
     async def handle_ticker(self, raw_message: dict[str, Any]) -> None:
         """Handle ticker event and update all related streams."""
         # Get references for faster access
-        broadcaster = self._broadcaster
         storage = self._storage
         channel = self._channel
 
@@ -266,14 +271,11 @@ class Aggregator:
         # Calculate broadcast price
         broadcast_price = ticker_snapshot["currentPrice"]
 
-        # Broadcast ticker data if enabled
         if settings.enable_ticker_stream:
-            await broadcaster.consume(channel, "ticker", [ticker_snapshot])
-
-        # Broadcast price data if enabled
+            await self._emit("ticker", ticker_snapshot)
         if settings.enable_price_stream:
-            await broadcaster.consume(
-                channel, "price", [{"symbol": ticker_symbol, "price": broadcast_price}]
+            await self._emit(
+                "price", {"symbol": ticker_symbol, "price": broadcast_price}
             )
 
         # Process ticker kline aggregation if enabled
@@ -285,6 +287,35 @@ class Aggregator:
             channel, ticker_symbol, ticker_snapshot, broadcast_price
         )
 
+    async def _emit(self, data_type: DataType, item: dict[str, Any]) -> None:
+        """Buffer item for batched flush, or consume immediately when not batching."""
+        if (
+            settings.aggregator_batch_enabled
+            and data_type in settings.aggregator_batch_types
+        ):
+            items = self._batch_buffer.setdefault(data_type, [])
+            items.append(item)
+            if len(items) >= settings.aggregator_batch_max_size:
+                await self._flush_batch()
+        else:
+            await self._broadcaster.consume(self._channel, data_type, [item])
+
+    async def _flush_batch(self) -> None:
+        """Swap out the buffer and broadcast each data type as one message."""
+        if not self._batch_buffer:
+            return
+        buffer, self._batch_buffer = self._batch_buffer, {}
+        for data_type, items in buffer.items():
+            if items:
+                await self._broadcaster.consume(self._channel, data_type, items)
+
+    async def _flush_loop(self) -> None:
+        """Flush buffered ticker/price items every batch interval."""
+        interval_sec = settings.aggregator_batch_interval_ms / 1000.0
+        while self._running:
+            await asyncio.sleep(interval_sec)
+            await self._flush_batch()
+
     async def start(self) -> None:
         """Start aggregator timer loop."""
         if self._running:
@@ -293,6 +324,8 @@ class Aggregator:
         # Update state and start timer task
         self._running = True
         self._timer_task = asyncio.create_task(self._timer_loop())
+        if settings.aggregator_batch_enabled:
+            self._flush_task = asyncio.create_task(self._flush_loop())
 
         # Log successful start
         channel_name = self._channel
@@ -315,6 +348,17 @@ class Aggregator:
 
             # Clear reference
             self._timer_task = None
+
+        # Cancel and cleanup flush task if exists
+        flush_task = self._flush_task
+        if flush_task is not None:
+            flush_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await flush_task
+            self._flush_task = None
+
+        # Flush remaining buffered items so none are lost
+        await self._flush_batch()
 
         # Log successful stop
         channel_name = self._channel
